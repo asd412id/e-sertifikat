@@ -1,30 +1,49 @@
 services:
-  backend:
+  nginx:
+    image: bitnami/nginx:latest
+    ports:
+      - "8003:80"
+    volumes:
+      - ./docker/nginx.conf:/opt/bitnami/nginx/conf/server_blocks/site.conf:ro
+      - ./frontend:/frontend
+    depends_on:
+      - app
+    networks:
+      - be-network
+    restart: unless-stopped
+
+  app:
     image: node:lts-slim
     volumes:
       - ./:/app
     working_dir: /app/backend
     command: sh -c "node server.js"
-    restart: unless-stopped
-    networks:
-      - esertifikat-network
-
-  nginx:
-    image: bitnami/nginx:latest
-    ports:
-      - "${E_SERTIFIKAT_PORT:-8003}:80"
-    volumes:
-      - ./docker/nginx.conf:/opt/bitnami/nginx/conf/server_blocks/site.conf:ro
-      - ./frontend:/frontend
     depends_on:
-      - backend
-    restart: unless-stopped
+      - postgres
     networks:
-      - esertifikat-network
+      - be-network
+      - db-network
+    restart: unless-stopped
 
-networks:
-  esertifikat-network:
-    driver: bridge
+  postgres:
+    image: bitnami/postgresql:latest
+    environment:
+      - POSTGRESQL_USERNAME=postgres
+      - POSTGRESQL_PASSWORD=password
+      - POSTGRESQL_DATABASE=e_sertifikat
+      - POSTGRESQL_PERFORM_RESTORE=true
+    volumes:
+      - e_sertifikat_data:/bitnami/postgresql
+    networks:
+      - db-network
+    restart: unless-stopped
 
 volumes:
-  uploads:
+  e_sertifikat_data:
+    external: true
+
+networks:
+  db-network:
+    driver: bridge
+  be-network:
+    driver: bridge
