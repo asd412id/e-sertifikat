@@ -13,7 +13,9 @@ services:
     restart: unless-stopped
 
   app:
-    image: node:lts-slim
+    build:
+      context: ./
+      dockerfile: docker/backend.Dockerfile
     volumes:
       - ./:/app
     working_dir: /app/backend
