@@ -449,8 +449,7 @@ const Certificates = () => {
       if (backgroundImage.startsWith('/uploads/')) {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
         // Remove /api part and trailing slash if present
-        const baseUrl = apiBaseUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
-        imageUrl = `${baseUrl}${backgroundImage}`;
+        imageUrl = `${apiBaseUrl}${backgroundImage}`;
       }
 
       const image = new window.Image();

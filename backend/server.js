@@ -25,7 +25,7 @@ async function start() {
     // Register static file serving for uploads
     await fastify.register(require('@fastify/static'), {
       root: require('path').join(__dirname, 'uploads'),
-      prefix: '/uploads/'
+      prefix: '/api/uploads/'
     });
 
     // Health check endpoint
