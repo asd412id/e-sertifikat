@@ -113,7 +113,6 @@ const Certificates = () => {
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [generating, setGenerating] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -414,31 +413,6 @@ const Certificates = () => {
     } finally {
       setGenerating(false);
       setAnchorEl(null);
-    }
-  };
-
-  const handleDownloadCertificate = async (certificateUrl) => {
-    try {
-      setDownloading(true);
-      // Extract filename from URL
-      const filename = certificateUrl.split('/').pop();
-      const blob = await certificateService.downloadCertificate(filename);
-
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-
-      // Clean up
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error('Failed to download certificate');
-    } finally {
-      setDownloading(false);
     }
   };
 
