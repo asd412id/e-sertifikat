@@ -68,6 +68,8 @@ const Participants = () => {
   const [importDialog, setImportDialog] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedParticipants, setSelectedParticipants] = useState([]);
   const [bulkDownloading, setBulkDownloading] = useState(false);
@@ -242,6 +244,7 @@ const Participants = () => {
   // Excel Export Function
   const handleExportExcel = async () => {
     try {
+      setExporting(true);
       if (participants.length === 0) {
         toast.error('Tidak ada data peserta untuk diekspor');
         return;
@@ -273,11 +276,14 @@ const Participants = () => {
       toast.success('Data peserta berhasil diekspor ke Excel');
     } catch (error) {
       toast.error('Gagal mengekspor data peserta: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setExporting(false);
     }
   };
 
   const handleDownloadCertificate = async (certificateUrl) => {
     try {
+      setDownloading(true);
       // Extract filename from URL
       const filename = certificateUrl.split('/').pop();
       const blob = await certificateService.downloadCertificate(filename);
@@ -295,6 +301,8 @@ const Participants = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       toast.error('Gagal mengunduh sertifikat');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -402,13 +410,19 @@ const Participants = () => {
             <Download sx={{ mr: 1 }} />
             Unduh Template
           </MenuItem>
-          <MenuItem onClick={() => { handleExportExcel(); setAnchorEl(null); }}>
-            <FileDownload sx={{ mr: 1 }} />
-            Ekspor ke Excel
+          <MenuItem
+            onClick={() => { handleExportExcel(); setAnchorEl(null); }}
+            disabled={exporting}
+          >
+            {exporting ? <CircularProgress size={20} sx={{ mr: 1 }} /> : <FileDownload sx={{ mr: 1 }} />}
+            {exporting ? 'Mengekspor...' : 'Ekspor ke Excel'}
           </MenuItem>
-          <MenuItem onClick={() => { handleBulkDownloadCertificates(); setAnchorEl(null); }}>
-            <FileDownload sx={{ mr: 1 }} />
-            Unduh Semua Sertifikat
+          <MenuItem
+            onClick={() => { handleBulkDownloadCertificates(); setAnchorEl(null); }}
+            disabled={bulkDownloading}
+          >
+            {bulkDownloading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : <FileDownload sx={{ mr: 1 }} />}
+            {bulkDownloading ? 'Mengunduh...' : 'Unduh Semua Sertifikat'}
           </MenuItem>
         </Menu>
 
@@ -477,12 +491,13 @@ const Participants = () => {
                             size="small"
                           />
                           {participant.certificateGenerated && participant.certificateUrl && (
-                            <Tooltip title="Unduh Sertifikat">
+                            <Tooltip title={downloading ? "Mengunduh..." : "Unduh Sertifikat"}>
                               <IconButton
                                 size="small"
                                 onClick={() => handleDownloadCertificate(participant.certificateUrl)}
+                                disabled={downloading}
                               >
-                                <Download />
+                                {downloading ? <CircularProgress size={16} /> : <Download />}
                               </IconButton>
                             </Tooltip>
                           )}

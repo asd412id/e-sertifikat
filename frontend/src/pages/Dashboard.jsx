@@ -12,6 +12,7 @@ import {
   Stack,
   Chip,
   Divider,
+  CircularProgress,
 } from '@mui/material';
 import {
   Event,
@@ -36,6 +37,7 @@ const Dashboard = () => {
     totalVerifieds: 0,
   });
   const [recentEvents, setRecentEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,6 +47,7 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
+      setLoading(true);
       const eventsResponse = await api.get('/events?limit=5');
       const events = eventsResponse.data.data.events;
 
@@ -62,6 +65,8 @@ const Dashboard = () => {
       });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -196,13 +201,19 @@ const Dashboard = () => {
         </Paper>
 
         {/* Stats Cards */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          {statsData.map((stat, index) => (
-            <Grid item xs={12} sm={6} md={4} key={index}>
-              <StatCard {...stat} />
-            </Grid>
-          ))}
-        </Grid>
+        {loading ? (
+          <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+            <CircularProgress size={60} />
+          </Box>
+        ) : (
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {statsData.map((stat, index) => (
+              <Grid item xs={12} sm={6} md={4} key={index}>
+                <StatCard {...stat} />
+              </Grid>
+            ))}
+          </Grid>
+        )}
 
         {/* Recent Events */}
         <Paper
@@ -239,7 +250,11 @@ const Dashboard = () => {
             </Box>
           </Stack>
 
-          {recentEvents.length > 0 ? (
+          {loading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+              <CircularProgress size={60} />
+            </Box>
+          ) : recentEvents.length > 0 ? (
             <Grid container spacing={3}>
               {recentEvents.map((event) => (
                 <Grid item xs={12} md={6} lg={4} key={event.id}>

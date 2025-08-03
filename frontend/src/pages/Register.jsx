@@ -25,7 +25,6 @@ import {
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import ReCAPTCHA from 'react-google-recaptcha';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -37,14 +36,26 @@ const Register = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [captchaValue, setCaptchaValue] = useState(null);
+  const [mathCaptcha, setMathCaptcha] = useState({
+    num1: 0,
+    num2: 0,
+    userAnswer: ''
+  });
 
   const { register } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     document.title = 'Daftar - e-Sertifikat';
+    // Generate initial math captcha
+    generateMathCaptcha();
   }, []);
+
+  const generateMathCaptcha = () => {
+    const num1 = Math.floor(Math.random() * 10) + 1;
+    const num2 = Math.floor(Math.random() * 10) + 1;
+    setMathCaptcha({ num1, num2, userAnswer: '' });
+  };
 
   const handleChange = (e) => {
     setFormData({
@@ -53,13 +64,23 @@ const Register = () => {
     });
   };
 
+  const handleCaptchaChange = (e) => {
+    setMathCaptcha({
+      ...mathCaptcha,
+      userAnswer: e.target.value
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    if (!captchaValue) {
-      setError('Silakan selesaikan verifikasi captcha');
+    // Validate math captcha
+    const correctAnswer = mathCaptcha.num1 + mathCaptcha.num2;
+    if (parseInt(mathCaptcha.userAnswer) !== correctAnswer || mathCaptcha.userAnswer === '') {
+      setError('Jawaban captcha salah. Silakan coba lagi.');
+      generateMathCaptcha(); // Generate new captcha
       setLoading(false);
       return;
     }
@@ -81,10 +102,6 @@ const Register = () => {
     }
 
     setLoading(false);
-  };
-
-  const onCaptchaChange = (value) => {
-    setCaptchaValue(value);
   };
 
   return (
@@ -306,12 +323,83 @@ const Register = () => {
                 </Grid>
 
                 <Grid item xs={12}>
-                  <Box display="flex" justifyContent="center" sx={{ mb: 2 }}>
-                    <ReCAPTCHA
-                      sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI" // Test key, replace with your actual key
-                      onChange={onCaptchaChange}
-                      theme="light"
-                    />
+                  <Box sx={{ mb: 2 }}>
+                    <Typography
+                      variant="body1"
+                      sx={{
+                        textAlign: 'center',
+                        mb: 1,
+                        fontWeight: 500,
+                        color: 'text.primary'
+                      }}
+                    >
+                      Verifikasi Captcha
+                    </Typography>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 2,
+                        p: 2,
+                        borderRadius: 2,
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {/* Noise background */}
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: 'linear-gradient(45deg, #f0f0f0 25%, transparent 25%), linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f0f0f0 75%), linear-gradient(-45deg, transparent 75%, #f0f0f0 75%)',
+                          backgroundSize: '20px 20px',
+                          backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+                          opacity: 0.7,
+                          pointerEvents: 'none'
+                        }}
+                      />
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', position: 'relative', zIndex: 1 }}>
+                        {mathCaptcha.num1} + {mathCaptcha.num2} = ?
+                      </Typography>
+                      <TextField
+                        required
+                        type="number"
+                        value={mathCaptcha.userAnswer}
+                        onChange={handleCaptchaChange}
+                        disabled={loading}
+                        sx={{ width: '100px', position: 'relative', zIndex: 1, backgroundColor: 'rgba(255,255,255,0.8)' }}
+                        inputProps={{
+                          style: { textAlign: 'center' },
+                          min: 0,
+                          max: 20
+                        }}
+                      />
+                      <Button
+                        variant="outlined"
+                        onClick={generateMathCaptcha}
+                        disabled={loading}
+                        size="small"
+                        sx={{ position: 'relative', zIndex: 1 }}
+                      >
+                        ↻
+                      </Button>
+                    </Box>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        textAlign: 'center',
+                        display: 'block',
+                        mt: 1,
+                        color: 'text.secondary'
+                      }}
+                    >
+                      Masukkan hasil penjumlahan di atas
+                    </Typography>
                   </Box>
                 </Grid>
 
@@ -321,7 +409,7 @@ const Register = () => {
                     fullWidth
                     variant="contained"
                     size="large"
-                    disabled={loading || !captchaValue}
+                    disabled={loading || mathCaptcha.userAnswer === ''}
                     startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PersonAddOutlined />}
                     sx={{
                       mt: 1,

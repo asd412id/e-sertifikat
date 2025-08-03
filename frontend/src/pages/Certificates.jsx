@@ -113,6 +113,8 @@ const Certificates = () => {
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     document.title = 'Kelola Sertifikat - e-Sertifikat';
@@ -322,6 +324,7 @@ const Certificates = () => {
     }
 
     try {
+      setSaving(true);
       // Upload background image if a new file is selected
       let backgroundUrl = backgroundImage;
       if (backgroundImageFile) {
@@ -367,6 +370,8 @@ const Certificates = () => {
       fetchTemplates();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Operasi gagal');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -414,6 +419,7 @@ const Certificates = () => {
 
   const handleDownloadCertificate = async (certificateUrl) => {
     try {
+      setDownloading(true);
       // Extract filename from URL
       const filename = certificateUrl.split('/').pop();
       const blob = await certificateService.downloadCertificate(filename);
@@ -431,15 +437,30 @@ const Certificates = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       toast.error('Failed to download certificate');
+    } finally {
+      setDownloading(false);
     }
   };
 
   useEffect(() => {
     if (backgroundImage) {
+      // Prepend API base URL for background images stored as /uploads/ paths
+      let imageUrl = backgroundImage;
+      if (backgroundImage.startsWith('/uploads/')) {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+        // Remove /api part and trailing slash if present
+        const baseUrl = apiBaseUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
+        imageUrl = `${baseUrl}${backgroundImage}`;
+      }
+
       const image = new window.Image();
-      image.src = backgroundImage;
+      image.src = imageUrl;
       image.onload = () => {
         setBackgroundImageObj(image);
+      };
+      image.onerror = (error) => {
+        console.error('Failed to load background image:', error);
+        toast.error('Gagal memuat gambar latar belakang');
       };
     }
   }, [backgroundImage]);
@@ -1107,10 +1128,11 @@ const Certificates = () => {
             <Button
               onClick={handleSaveTemplate}
               variant="contained"
-              startIcon={<Save />}
+              startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <Save />}
+              disabled={saving}
               sx={{ borderRadius: 2, px: 3 }}
             >
-              Simpan Template
+              {saving ? 'Menyimpan...' : 'Simpan Template'}
             </Button>
           </DialogActions>
         </Dialog>
