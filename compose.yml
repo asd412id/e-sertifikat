@@ -2,7 +2,7 @@ services:
   nginx:
     image: bitnami/nginx:latest
     ports:
-      - "8003:80"
+      - "8004:80"
     volumes:
       - ./docker/nginx.conf:/opt/bitnami/nginx/conf/server_blocks/site.conf:ro
       - ./frontend:/frontend
