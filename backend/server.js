@@ -50,6 +50,9 @@ async function start() {
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ force: false });
       console.log('Database synchronized.');
+    } else {
+      await sequelize.sync();
+      console.log('Database synchronized in production mode.');
     }
 
     // Start server
