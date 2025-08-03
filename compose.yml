@@ -1,0 +1,30 @@
+services:
+  backend:
+    image: node:lts-slim
+    volumes:
+      - ./:/app
+    working_dir: /app/backend
+    command: sh -c "node server.js"
+    restart: unless-stopped
+    networks:
+      - esertifikat-network
+
+  nginx:
+    image: bitnami/nginx:latest
+    ports:
+      - "${E_SERTIFIKAT_PORT:-8003}:80"
+    volumes:
+      - ./docker/nginx.conf:/opt/bitnami/nginx/conf/server_blocks/site.conf:ro
+      - ./frontend:/frontend
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - esertifikat-network
+
+networks:
+  esertifikat-network:
+    driver: bridge
+
+volumes:
+  uploads:
