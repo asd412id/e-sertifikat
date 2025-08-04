@@ -390,27 +390,47 @@ const Certificates = () => {
   const handleGenerateAll = async (templateId) => {
     try {
       setGenerating(true);
+      toast.loading('Memulai proses generate sertifikat... Ini mungkin memakan waktu beberapa menit.', { duration: 5000 });
+
       const response = await certificateService.generateAllCertificates(templateId);
 
       if (response.success) {
         const { success, failed } = response.data;
-        toast.success(
-          <div>
-            Generate berhasil {success} certificates{failed > 0 ? `, ${failed} gagal` : ''}
-            <br />
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => navigate(`/participants/${eventId}`)}
-              sx={{ mt: 1 }}
-            >
-              Lihat Peserta
-            </Button>
-          </div>
-        );
+        if (failed > 0) {
+          toast(
+            <div>
+              Generate selesai: {success} berhasil, {failed} gagal
+              <br />
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => navigate(`/participants/${eventId}`)}
+                sx={{ mt: 1 }}
+              >
+                Lihat Peserta
+              </Button>
+            </div>
+          );
+        } else {
+          toast.success(
+            <div>
+              Generate berhasil {success} certificates
+              <br />
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => navigate(`/participants/${eventId}`)}
+                sx={{ mt: 1 }}
+              >
+                Lihat Peserta
+              </Button>
+            </div>
+          );
+        }
       }
     } catch (error) {
-      toast.error('Failed to generate certificates');
+      console.error('Certificate generation error:', error);
+      toast.error('Gagal mengenerate sertifikat. Silakan coba lagi.');
     } finally {
       setGenerating(false);
       setAnchorEl(null);

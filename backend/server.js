@@ -1,5 +1,9 @@
 const fastify = require('fastify')({
-  logger: process.env.NODE_ENV === 'development'
+  logger: process.env.NODE_ENV === 'development',
+  // Increase request timeout for long-running operations
+  requestTimeout: 900000, // 15 minutes
+  // Increase keep-alive timeout
+  keepAliveTimeout: 900000 // 15 minutes
 });
 
 // Load environment variables

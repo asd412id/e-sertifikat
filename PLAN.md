@@ -1,77 +1,65 @@
-# Plan
-## Fitur Utama
+# e-Sertifikat - PDF Generator Improvements Summary
 
-1. **Autentikasi Pengguna**
-  - User dapat melakukan registrasi dan login.
-  - Otentikasi menggunakan JWT (fast-jwt) dan enkripsi password dengan bcrypt.
+## Issues Fixed
 
-2. **Manajemen Kegiatan**
-  - Setelah login, user dapat membuat kegiatan/event.
-  - Saat membuat kegiatan, user menentukan field identifikasi peserta (misal: nama, jabatan, instansi, dsb) yang dapat disesuaikan sesuai kebutuhan.
+### 1. File Naming Issue
+**Problem**: PDF files were generated with generic names without participant information
+**Solution**:
+- Updated `CertificateService.js` to include participant name in filename
+- Sanitized filenames to remove special characters
+- Maintained backward compatibility with fallback naming
 
-3. **Manajemen Peserta**
-  - Import data peserta melalui file Excel (.xlsx) atau input manual satu per satu.
-  - Field peserta mengikuti konfigurasi yang ditentukan saat pembuatan kegiatan.
+### 2. Font Family Loading Issue
+**Problem**: Custom fonts from Google Fonts were not properly loaded in generated PDFs
+**Solution**:
+- Enhanced `PuppeteerPDFService.js` with improved font loading mechanism
+- Added `document.fonts.ready` check to ensure all fonts are loaded before PDF generation
+- Increased timeout values for better reliability
 
-4. **Template Sertifikat Dinamis**
-  - Editor visual berbasis React.js dengan Material UI dan Fabric.js (atau Konva.js sebagai alternatif).
-  - User dapat menambahkan elemen teks/gambar ke template, mengatur posisi, ukuran, dan styling.
-  - Field dinamis (misal: nama peserta) dapat di-inject ke template sebagai placeholder yang akan digantikan data peserta saat generate sertifikat.
+## Performance & Reliability Improvements
 
-5. **Generate & Download Sertifikat**
-  - Sertifikat dapat di-generate secara otomatis untuk seluruh peserta atau per peserta dengan data dinamis.
-  - Sertifikat dapat diunduh dalam format PDF.
+### Backend Optimizations
+1. **Batch Processing**: Implemented batch processing in `CertificateService.js` to handle large numbers of certificates
+2. **Resource Management**: Added proper resource cleanup and error handling
+3. **Timeout Configuration**: Increased timeout values in `server.js` for long-running operations
+4. **Memory Management**: Added resource limits in `compose.yml` for the app service
 
-## Tampilan Aplikasi
+### Frontend Improvements
+1. **User Feedback**: Enhanced `Certificates.jsx` with better user feedback during long operations
+2. **Timeout Handling**: Increased timeout values in `dataService.js` for certificate generation
 
-Aplikasi e-Sertifikat dirancang dengan **tampilan elegan, modern, dan responsif** menggunakan Material UI. Setiap halaman dan komponen akan menyesuaikan tampilan pada berbagai perangkat (desktop, tablet, mobile) untuk memastikan pengalaman pengguna yang optimal. Desain mengutamakan kemudahan navigasi, konsistensi warna, tipografi yang jelas, serta penggunaan elemen visual yang bersih dan profesional.
+### Infrastructure Enhancements
+1. **Nginx Configuration**: Updated `nginx.conf` with increased timeout values for certificate endpoints
+2. **Docker Configuration**: Added resource limits in `compose.yml` for better performance
 
-## Struktur Directory
+## Technical Details
 
-Untuk optimasi pengembangan dan deployment, **direkomendasikan memisahkan directory frontend dan backend**. Struktur yang umum digunakan:
+### File Naming Convention
+New filename format: `certificate_{participant_name}_{participant_id}_{timestamp}.pdf`
 
-```
-/project-root
-  /backend    # Fastify, Sequelize, dsb.
-    /controllers   # Handler untuk request/response
-    /models        # Definisi model Sequelize
-    /services      # Logika bisnis dan interaksi data
-  /frontend   # React.js, Vite, dsb.
-```
+### Font Loading Process
+1. Collect all unique font families from template
+2. Generate Google Fonts CSS imports for non-standard fonts
+3. Wait for `document.fonts.ready` before generating PDF
+4. Include fallback mechanisms for font loading failures
 
-**Kelebihan pemisahan:**
-- Pengembangan lebih terstruktur dan modular.
-- Backend lebih maintainable dengan pemisahan controller, model, dan service.
-- Deployment dapat dilakukan secara independen (misal: frontend di Vercel/Netlify, backend di VPS/Cloud).
-- Memudahkan scaling dan maintenance.
+### Batch Processing
+- Process participants in batches of 20
+- Add delays between batches to prevent system overload
+- Provide detailed progress logging
+- Maintain error tracking and reporting
 
-**Alternatif:**
-Jika ingin lebih sederhana (misal untuk prototipe), frontend bisa diletakkan dalam subfolder backend dan disajikan sebagai static files oleh backend. Namun, untuk project production, pemisahan lebih disarankan.
+## Testing Recommendations
 
-## Teknologi
+1. Test with various font families (standard and Google Fonts)
+2. Verify filename generation with different participant names (special characters, Unicode)
+3. Test bulk certificate generation with large participant lists
+4. Verify timeout handling for long-running operations
+5. Test error recovery and cleanup mechanisms
 
-- **Frontend:**
-  - React.js + Vite
-  - Material UI (desain modern & responsif)
-  - Konva.js
+## Deployment Notes
 
-- **Backend:**
-  - Fastify
-  - @fastify/autoload
-  - @fastify/cors
-  - dotenv
-  - Sequelize (ORM)
-  - PostgreSQL
-  - fast-jwt (JWT authentication)
-  - bcrypt (hashing password)
-  - Multer (upload file Excel)
-  - xlsx (parsing file Excel)
-  - PDF generation: Puppeteer
-
-## Alur Penggunaan
-
-1. User register/login.
-2. Membuat kegiatan dan menentukan field peserta.
-3. Import atau input peserta.
-4. Membuat/mengedit template sertifikat dengan field dinamis.
-5. Generate dan download sertifikat PDF untuk peserta.
+1. Ensure sufficient system resources (especially memory) for Puppeteer
+2. Verify Nginx and backend timeout configurations match
+3. Test certificate generation under load
+4. Monitor resource usage during bulk operations

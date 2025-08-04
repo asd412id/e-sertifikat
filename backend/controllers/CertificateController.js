@@ -278,6 +278,16 @@ class CertificateController {
             }
           } catch (fileError) {
             console.log(`Certificate file not found for participant ${participant.id}: ${filePath}`);
+            // Update participant record to mark certificate as not generated
+            try {
+              await participant.update({
+                certificateGenerated: false,
+                certificateUrl: null
+              });
+              console.log(`Updated participant ${participant.id} certificate status to not generated`);
+            } catch (updateError) {
+              console.log(`Failed to update participant ${participant.id} certificate status:`, updateError);
+            }
             // Continue with other files even if one is missing
           }
         }

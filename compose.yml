@@ -26,6 +26,13 @@ services:
       - be-network
       - db-network
     restart: unless-stopped
+    # Add resource limits for Puppeteer
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
 
   postgres:
     image: bitnami/postgresql:latest

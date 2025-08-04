@@ -128,7 +128,9 @@ export const certificateService = {
 
   // Generate certificates for all participants
   generateAllCertificates: async (templateId) => {
-    const response = await api.post(`/certificates/templates/${templateId}/generate-all`);
+    const response = await api.post(`/certificates/templates/${templateId}/generate-all`, {}, {
+      timeout: 600000 // 10 minute timeout for certificate generation
+    });
     return response.data;
   },
 

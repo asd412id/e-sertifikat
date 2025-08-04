@@ -246,19 +246,30 @@ class CertificateService {
         throw new Error('Template not found');
       }
 
+      // Get total count of participants for this event
+      const totalParticipants = await Participant.count({
+        where: { eventId: template.eventId }
+      });
+
+      console.log(`Starting certificate generation for template ${templateId} with ${totalParticipants} participants`);
+
       const results = {
         success: 0,
         failed: 0,
+        total: totalParticipants,
+        certificates: [],
         errors: []
       };
 
-      // Process participants in batches to avoid memory issues
-      const batchSize = 50; // Process 50 participants at a time
+      // Process participants in smaller batches to avoid memory issues and timeouts
+      const batchSize = 20; // Reduced batch size
       let offset = 0;
       let hasMore = true;
 
       while (hasMore) {
-        // Get a batch of participants
+        console.log(`Processing batch starting at offset ${offset}`);
+
+        // Get a batch of participants with their updated certificate info
         const participants = await Participant.findAll({
           where: { eventId: template.eventId },
           limit: batchSize,
@@ -275,14 +286,21 @@ class CertificateService {
         // Generate certificates for this batch
         for (const participant of participants) {
           try {
-            await this.generateCertificate(templateId, participant.id, userId);
+            const result = await this.generateCertificate(templateId, participant.id, userId);
             results.success++;
+            results.certificates.push({
+              participantId: participant.id,
+              participantData: participant.data,
+              certificateUrl: result.filePath
+            });
+            console.log(`Generated certificate for participant ${participant.id} (${results.success}/${totalParticipants})`);
           } catch (error) {
             results.failed++;
             results.errors.push({
               participantId: participant.id,
               error: error.message
             });
+            console.error(`Failed to generate certificate for participant ${participant.id}:`, error.message);
           }
         }
 
@@ -294,12 +312,14 @@ class CertificateService {
           offset += batchSize;
         }
 
-        // Add a small delay to prevent overwhelming the system
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Add a longer delay between batches to prevent overwhelming the system
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
+      console.log(`Certificate generation completed. Success: ${results.success}, Failed: ${results.failed}`);
       return results;
     } catch (error) {
+      console.error('Certificate generation failed:', error);
       throw error;
     }
   }
