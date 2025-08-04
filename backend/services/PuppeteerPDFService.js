@@ -78,6 +78,19 @@ class PuppeteerPDFService {
       // Set content and wait for it to load
       await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
+      // Additional wait to ensure fonts are loaded
+      await page.evaluate(() => {
+        return new Promise((resolve) => {
+          // Check if all fonts are loaded
+          if (document.fonts) {
+            document.fonts.ready.then(resolve);
+          } else {
+            // Fallback: wait a bit longer
+            setTimeout(resolve, 1000);
+          }
+        });
+      });
+
       // Generate PDF
       const pdfBuffer = await page.pdf({
         width: `${template.width}px`,

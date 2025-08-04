@@ -266,8 +266,8 @@ class CertificateController {
             const stats = await fs.stat(filePath);
 
             if (stats.size > 0) {
-              const displayName = participant.data && participant.data.name ?
-                participant.data.name.replace(/[^\w\s-]/g, '') : 'participant';
+              const displayName = participant.data && (participant.data.nama || participant.data.name) ?
+                (participant.data.nama || participant.data.name).replace(/[^\w\s-]/g, '') : 'participant';
               archive.file(filePath, { name: `${displayName}_${filename}` });
               filesAdded++;
               console.log(`Added certificate for ${displayName}: ${filename}`);
