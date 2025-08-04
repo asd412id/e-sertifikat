@@ -41,7 +41,8 @@ import {
   MoreVert,
   FileUpload,
   Person,
-  ArrowBack
+  ArrowBack,
+  Search
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
@@ -333,20 +334,11 @@ const Participants = () => {
   };
 
   const handleBulkDownloadCertificates = async () => {
-    // Get participants with generated certificates
-    const participantsWithCertificates = participants.filter(p => p.certificateGenerated && p.certificateUrl);
-
-    if (participantsWithCertificates.length === 0) {
-      toast.error('Tidak ada sertifikat yang tersedia untuk diunduh');
-      return;
-    }
-
     try {
       setBulkDownloading(true);
-      const participantIds = participantsWithCertificates.map(p => p.id);
 
       // Call the service to get the zip blob
-      const blob = await certificateService.bulkDownloadCertificates(eventId, participantIds);
+      const blob = await certificateService.bulkDownloadCertificates(eventId);
 
       // Validate that we received a valid blob
       if (!blob || blob.size === 0) {
@@ -367,7 +359,7 @@ const Participants = () => {
         window.URL.revokeObjectURL(url);
       }, 100);
 
-      toast.success(`Berhasil mengunduh ${participantsWithCertificates.length} sertifikat`);
+      toast.success('Berhasil mengunduh semua sertifikat');
     } catch (error) {
       console.error('Bulk download error:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Gagal mengunduh sertifikat';
@@ -465,7 +457,7 @@ const Participants = () => {
                 InputProps={{
                   endAdornment: (
                     <IconButton size="small" type="submit">
-                      <FileDownload />
+                      <Search />
                     </IconButton>
                   ),
                 }}

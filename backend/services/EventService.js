@@ -35,7 +35,8 @@ class EventService {
         ],
         limit,
         offset,
-        order: [['createdAt', 'DESC']]
+        order: [['createdAt', 'DESC']],
+        distinct: true
       });
 
       return {

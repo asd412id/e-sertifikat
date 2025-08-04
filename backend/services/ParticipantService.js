@@ -51,7 +51,7 @@ class ParticipantService {
         for (const field of event.participantFields) {
           const condition = {};
           condition[`data.${field.name}`] = {
-            [Op.like]: `%${search}%`
+            [Op.iLike]: `%${search}%`
           };
           searchConditions.push(condition);
         }

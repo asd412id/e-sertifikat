@@ -192,38 +192,40 @@ class CertificateController {
   async bulkDownloadCertificates(request, reply) {
     try {
       const { eventId } = request.params;
-      const { participantIds } = request.body;
+      // Note: We're not using participantIds from request.body anymore
+      // Instead, we'll fetch all participants with generated certificates for this event
 
-      console.log(`Bulk download request for event ${eventId} with participants:`, participantIds);
+      console.log(`Bulk download request for event ${eventId}`);
 
       // Get event and verify ownership
       const event = await Event.findOne({
-        where: { id: eventId, userId: request.user.userId, isActive: true },
-        include: [{
-          model: Participant,
-          as: 'participants',
-          where: {
-            id: participantIds,
-            certificateGenerated: true
-          }
-        }]
+        where: { id: eventId, userId: request.user.userId, isActive: true }
       });
 
       if (!event) {
-        console.log('Event or participants not found');
+        console.log('Event not found');
         return reply.status(404).send({
-          error: 'Event or participants not found'
+          error: 'Event not found'
         });
       }
 
-      if (event.participants.length === 0) {
+      // Get all participants with generated certificates for this event
+      const participants = await Participant.findAll({
+        where: {
+          eventId: eventId,
+          certificateGenerated: true
+        },
+        order: [['id', 'ASC']]
+      });
+
+      if (participants.length === 0) {
         console.log('No participants with certificates found');
         return reply.status(404).send({
-          error: 'No certificates found for the specified participants'
+          error: 'No certificates found for this event'
         });
       }
 
-      console.log(`Found ${event.participants.length} participants with certificates`);
+      console.log(`Found ${participants.length} participants with certificates`);
 
       // Create a zip file containing all certificates
       const archive = archiver('zip', {
@@ -255,7 +257,7 @@ class CertificateController {
       let filesAdded = 0;
 
       // Add each certificate to the zip
-      for (const participant of event.participants) {
+      for (const participant of participants) {
         if (participant.certificateUrl) {
           const filename = participant.certificateUrl.split('/').pop();
           const filePath = path.join(process.env.UPLOAD_DIR || './uploads', filename);

@@ -154,15 +154,13 @@ export const certificateService = {
   },
 
   // Bulk download certificates
-  bulkDownloadCertificates: async (eventId, participantIds) => {
+  bulkDownloadCertificates: async (eventId) => {
     try {
-      console.log('Requesting bulk download for event:', eventId, 'participants:', participantIds);
+      console.log('Requesting bulk download for event:', eventId);
 
-      const response = await api.post(`/certificates/events/${eventId}/bulk-download`, {
-        participantIds
-      }, {
+      const response = await api.post(`/certificates/events/${eventId}/bulk-download`, {}, {
         responseType: 'blob',
-        timeout: 60000 // 60 second timeout
+        timeout: 300000 // 5 minute timeout for large downloads
       });
 
       console.log('Bulk download response received, size:', response.data.size, 'type:', response.data.type);
