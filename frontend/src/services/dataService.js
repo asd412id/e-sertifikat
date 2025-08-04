@@ -40,8 +40,8 @@ export const eventService = {
 
 export const participantService = {
   // Get participants for an event
-  getParticipants: async (eventId, page = 1, limit = 10) => {
-    const response = await api.get(`/events/${eventId}/participants?page=${page}&limit=${limit}`);
+  getParticipants: async (eventId, page = 1, limit = 10, search = '') => {
+    const response = await api.get(`/events/${eventId}/participants?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
     return response.data;
   },
 

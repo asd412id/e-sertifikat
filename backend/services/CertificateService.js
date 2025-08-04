@@ -232,17 +232,13 @@ class CertificateService {
 
   async generateAllCertificates(templateId, userId) {
     try {
-      // Get template
+      // Get template and event info
       const template = await CertificateTemplate.findOne({
         where: { id: templateId, isActive: true },
         include: [{
           model: Event,
           as: 'event',
-          where: { userId, isActive: true },
-          include: [{
-            model: Participant,
-            as: 'participants'
-          }]
+          where: { userId, isActive: true }
         }]
       });
 
@@ -253,27 +249,53 @@ class CertificateService {
       const results = {
         success: 0,
         failed: 0,
-        certificates: [],
         errors: []
       };
 
-      // Generate certificate for each participant
-      for (const participant of template.event.participants) {
-        try {
-          const result = await this.generateCertificate(templateId, participant.id, userId);
-          results.success++;
-          results.certificates.push({
-            participantId: participant.id,
-            participantData: participant.data,
-            certificateUrl: result.filePath
-          });
-        } catch (error) {
-          results.failed++;
-          results.errors.push({
-            participantId: participant.id,
-            error: error.message
-          });
+      // Process participants in batches to avoid memory issues
+      const batchSize = 50; // Process 50 participants at a time
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        // Get a batch of participants
+        const participants = await Participant.findAll({
+          where: { eventId: template.eventId },
+          limit: batchSize,
+          offset: offset,
+          order: [['id', 'ASC']]
+        });
+
+        // If no more participants, stop processing
+        if (participants.length === 0) {
+          hasMore = false;
+          break;
         }
+
+        // Generate certificates for this batch
+        for (const participant of participants) {
+          try {
+            await this.generateCertificate(templateId, participant.id, userId);
+            results.success++;
+          } catch (error) {
+            results.failed++;
+            results.errors.push({
+              participantId: participant.id,
+              error: error.message
+            });
+          }
+        }
+
+        // If we got fewer participants than the batch size, this is the last batch
+        if (participants.length < batchSize) {
+          hasMore = false;
+        } else {
+          // Move to the next batch
+          offset += batchSize;
+        }
+
+        // Add a small delay to prevent overwhelming the system
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       return results;

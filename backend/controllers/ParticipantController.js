@@ -29,13 +29,14 @@ class ParticipantController {
   async getParticipants(request, reply) {
     try {
       const { eventId } = request.params;
-      const { page = 1, limit = 10 } = request.query;
+      const { page = 1, limit = 10, search = '' } = request.query;
 
       const result = await ParticipantService.getParticipantsByEvent(
         parseInt(eventId),
         request.user.userId,
         parseInt(page),
-        parseInt(limit)
+        parseInt(limit),
+        search
       );
 
       reply.send({

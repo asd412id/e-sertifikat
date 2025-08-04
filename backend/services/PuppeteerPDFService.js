@@ -7,15 +7,41 @@ const { el } = require('date-fns/locale');
 class PuppeteerPDFService {
   constructor() {
     this.browser = null;
+    this.initializationPromise = null; // To prevent multiple browser initializations
   }
 
   async initialize() {
-    if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
+    // If initialization is already in progress, wait for it to complete
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+      return;
     }
+
+    // If browser is already initialized, do nothing
+    if (this.browser) {
+      return;
+    }
+
+    // Start initialization and store the promise
+    this.initializationPromise = puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // Overcome limited resource problems
+        '--disable-gpu',
+        '--disable-software-rasterizer'
+      ],
+      timeout: 60000 // Increase timeout to 60 seconds
+    }).then(browser => {
+      this.browser = browser;
+      this.initializationPromise = null; // Clear the promise once done
+    }).catch(error => {
+      this.initializationPromise = null; // Clear the promise on error
+      throw error;
+    });
+
+    await this.initializationPromise;
   }
 
   async close() {
@@ -26,10 +52,13 @@ class PuppeteerPDFService {
   }
 
   async createPDFFromTemplate(template, participant) {
+    let page = null;
     try {
       await this.initialize();
+      page = await this.browser.newPage();
 
-      const page = await this.browser.newPage();
+      // Set a longer timeout for page operations
+      page.setDefaultTimeout(60000); // 60 seconds
 
       // Enable local file access
       await page.setRequestInterception(true);
@@ -76,7 +105,10 @@ class PuppeteerPDFService {
       const htmlContent = this.generateHTMLFromTemplate(template, participant);
 
       // Set content and wait for it to load
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+      await page.setContent(htmlContent, {
+        waitUntil: 'networkidle0',
+        timeout: 30000 // 30 seconds timeout
+      });
 
       // Additional wait to ensure fonts are loaded
       await page.evaluate(() => {
@@ -91,7 +123,7 @@ class PuppeteerPDFService {
         });
       });
 
-      // Generate PDF
+      // Generate PDF with optimized settings
       const pdfBuffer = await page.pdf({
         width: `${template.width}px`,
         height: `${template.height}px`,
@@ -101,13 +133,23 @@ class PuppeteerPDFService {
           right: 0,
           bottom: 0,
           left: 0
-        }
+        },
+        preferCSSPageSize: true
       });
 
-      await page.close();
       return pdfBuffer;
     } catch (error) {
+      console.error('Error generating PDF:', error);
       throw error;
+    } finally {
+      // Always close the page to free up resources
+      if (page) {
+        try {
+          await page.close();
+        } catch (error) {
+          console.error('Error closing page:', error);
+        }
+      }
     }
   }
 

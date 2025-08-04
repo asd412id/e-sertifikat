@@ -28,7 +28,8 @@ import {
   Menu,
   Stack,
   Avatar,
-  CardActions
+  CardActions,
+  Pagination
 } from '@mui/material';
 import {
   Add,
@@ -631,6 +632,23 @@ const Certificates = () => {
               </Grid>
             ))}
           </Grid>
+        )}
+
+        {/* Pagination Controls */}
+        {pagination.totalPages > 1 && (
+          <Box display="flex" justifyContent="center" alignItems="center" mt={4}>
+            <Pagination
+              count={pagination.totalPages}
+              page={pagination.currentPage}
+              onChange={(event, page) => fetchTemplates(page)}
+              color="primary"
+              showFirstButton
+              showLastButton
+            />
+            <Typography variant="body2" color="text.secondary" ml={2}>
+              Halaman {pagination.currentPage} dari {pagination.totalPages}
+            </Typography>
+          </Box>
         )}
 
         {/* Menu Aksi */}

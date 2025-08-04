@@ -28,7 +28,8 @@ import {
   Alert,
   Tooltip,
   Fab,
-  Menu
+  Menu,
+  Pagination
 } from '@mui/material';
 import {
   Add,
@@ -61,6 +62,7 @@ const Participants = () => {
     totalCount: 0,
     limit: 10
   });
+  const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState(null);
   const [formData, setFormData] = useState({});
@@ -81,6 +83,19 @@ const Participants = () => {
     }
   }, [eventId]);
 
+  // Debounce search term
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchTerm !== undefined) {
+        fetchParticipants(1, searchTerm);
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTerm]);
+
   const fetchEvent = async () => {
     try {
       const response = await eventService.getEvent(eventId);
@@ -92,10 +107,10 @@ const Participants = () => {
     }
   };
 
-  const fetchParticipants = async (page = 1) => {
+  const fetchParticipants = async (page = 1, search = searchTerm) => {
     try {
       setLoading(true);
-      const response = await participantService.getParticipants(eventId, page, pagination.limit);
+      const response = await participantService.getParticipants(eventId, page, pagination.limit, search);
       setParticipants(response.data.participants);
       setPagination({
         currentPage: response.data.currentPage,
@@ -107,6 +122,17 @@ const Participants = () => {
       toast.error('Gagal mengambil data peserta');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    fetchParticipants(1, searchTerm);
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= pagination.totalPages) {
+      fetchParticipants(newPage);
     }
   };
 
@@ -426,6 +452,33 @@ const Participants = () => {
           </MenuItem>
         </Menu>
 
+        {/* Search and Pagination Controls */}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Box width="300px">
+            <form onSubmit={handleSearch}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Cari peserta..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  endAdornment: (
+                    <IconButton size="small" type="submit">
+                      <FileDownload />
+                    </IconButton>
+                  ),
+                }}
+              />
+            </form>
+          </Box>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="body2" color="text.secondary">
+              Total: {pagination.totalCount} peserta
+            </Typography>
+          </Box>
+        </Box>
+
         {/* Participants Table */}
         <Card>
           <CardContent>
@@ -460,72 +513,91 @@ const Participants = () => {
                 </Box>
               </Box>
             ) : (
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>No</TableCell>
-                      {participantFields.map((field) => (
-                        <TableCell key={field.name}>
-                          {field.label}
-                          {field.required && <span style={{ color: 'red' }}>*</span>}
-                        </TableCell>
-                      ))}
-                      <TableCell>Sertifikat</TableCell>
-                      <TableCell>Aksi</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {participants.map((participant, index) => (
-                      <TableRow key={participant.id}>
-                        <TableCell>{index + 1}</TableCell>
+              <>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>No</TableCell>
                         {participantFields.map((field) => (
                           <TableCell key={field.name}>
-                            {participant.data[field.name] || '-'}
+                            {field.label}
+                            {field.required && <span style={{ color: 'red' }}>*</span>}
                           </TableCell>
                         ))}
-                        <TableCell>
-                          <Chip
-                            label={participant.certificateGenerated ? 'Tergenerate' : 'Belum'}
-                            color={participant.certificateGenerated ? 'success' : 'default'}
-                            size="small"
-                          />
-                          {participant.certificateGenerated && participant.certificateUrl && (
-                            <Tooltip title={downloading ? "Mengunduh..." : "Unduh Sertifikat"}>
+                        <TableCell>Sertifikat</TableCell>
+                        <TableCell>Aksi</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {participants.map((participant, index) => (
+                        <TableRow key={participant.id}>
+                          <TableCell>{index + 1 + (pagination.currentPage - 1) * pagination.limit}</TableCell>
+                          {participantFields.map((field) => (
+                            <TableCell key={field.name}>
+                              {participant.data[field.name] || '-'}
+                            </TableCell>
+                          ))}
+                          <TableCell>
+                            <Chip
+                              label={participant.certificateGenerated ? 'Tergenerate' : 'Belum'}
+                              color={participant.certificateGenerated ? 'success' : 'default'}
+                              size="small"
+                            />
+                            {participant.certificateGenerated && participant.certificateUrl && (
+                              <Tooltip title={downloading ? "Mengunduh..." : "Unduh Sertifikat"}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleDownloadCertificate(participant.certificateUrl)}
+                                  disabled={downloading}
+                                >
+                                  {downloading ? <CircularProgress size={16} /> : <Download />}
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Tooltip title="Edit">
                               <IconButton
                                 size="small"
-                                onClick={() => handleDownloadCertificate(participant.certificateUrl)}
-                                disabled={downloading}
+                                onClick={() => handleOpenDialog(participant)}
                               >
-                                {downloading ? <CircularProgress size={16} /> : <Download />}
+                                <Edit />
                               </IconButton>
                             </Tooltip>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Tooltip title="Edit">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenDialog(participant)}
-                            >
-                              <Edit />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Hapus">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleDelete(participant.id)}
-                            >
-                              <Delete />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                            <Tooltip title="Hapus">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDelete(participant.id)}
+                              >
+                                <Delete />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                {/* Pagination Controls */}
+                {pagination.totalPages > 1 && (
+                  <Box display="flex" justifyContent="center" alignItems="center" mt={2}>
+                    <Pagination
+                      count={pagination.totalPages}
+                      page={pagination.currentPage}
+                      onChange={(event, page) => handlePageChange(page)}
+                      color="primary"
+                      showFirstButton
+                      showLastButton
+                    />
+                    <Typography variant="body2" color="text.secondary" ml={2}>
+                      Halaman {pagination.currentPage} dari {pagination.totalPages}
+                    </Typography>
+                  </Box>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

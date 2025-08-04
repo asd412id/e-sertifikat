@@ -29,7 +29,8 @@ import {
   Stack,
   Divider,
   CardActions,
-  Avatar
+  Avatar,
+  Pagination
 } from '@mui/material';
 import {
   Add,
@@ -384,6 +385,23 @@ const Events = () => {
               </Grid>
             ))}
           </Grid>
+        )}
+
+        {/* Pagination Controls */}
+        {pagination.totalPages > 1 && (
+          <Box display="flex" justifyContent="center" alignItems="center" mt={4}>
+            <Pagination
+              count={pagination.totalPages}
+              page={pagination.currentPage}
+              onChange={(event, page) => fetchEvents(page)}
+              color="primary"
+              showFirstButton
+              showLastButton
+            />
+            <Typography variant="body2" color="text.secondary" ml={2}>
+              Halaman {pagination.currentPage} dari {pagination.totalPages}
+            </Typography>
+          </Box>
         )}
 
         {/* Dialog Buat/Edit Acara */}

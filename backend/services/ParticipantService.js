@@ -1,4 +1,5 @@
 const { Participant, Event } = require('../models');
+const { Op } = require('sequelize');
 const xlsx = require('xlsx');
 const fs = require('fs').promises;
 const path = require('path');
@@ -29,7 +30,7 @@ class ParticipantService {
     }
   }
 
-  async getParticipantsByEvent(eventId, userId, page = 1, limit = 10) {
+  async getParticipantsByEvent(eventId, userId, page = 1, limit = 10, search = '') {
     try {
       // Verify event ownership
       const event = await Event.findOne({
@@ -42,8 +43,27 @@ class ParticipantService {
 
       const offset = (page - 1) * limit;
 
+      // Build search condition
+      let whereCondition = { eventId };
+      if (search) {
+        // Create search conditions for all participant fields
+        const searchConditions = [];
+        for (const field of event.participantFields) {
+          const condition = {};
+          condition[`data.${field.name}`] = {
+            [Op.like]: `%${search}%`
+          };
+          searchConditions.push(condition);
+        }
+
+        whereCondition = {
+          eventId,
+          [Op.or]: searchConditions
+        };
+      }
+
       const { count, rows } = await Participant.findAndCountAll({
-        where: { eventId },
+        where: whereCondition,
         limit,
         offset,
         order: [['createdAt', 'DESC']]
