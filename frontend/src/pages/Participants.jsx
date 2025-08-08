@@ -80,6 +80,7 @@ const Participants = () => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateDialog, setTemplateDialog] = useState(false);
   const [bulkPdfDownloading, setBulkPdfDownloading] = useState(false);
+  const [currentParticipant, setCurrentParticipant] = useState(null); // For individual downloads
 
   useEffect(() => {
     if (eventId) {
@@ -372,7 +373,8 @@ const Participants = () => {
 
   const handleGenerateAndDownloadCertificate = async (participantId, participantName) => {
     if (!selectedTemplate) {
-      toast.error('Silakan pilih template terlebih dahulu');
+      // Store the participant info for later use
+      setCurrentParticipant({ id: participantId, name: participantName });
       setTemplateDialog(true);
       await loadTemplates();
       return;
@@ -736,11 +738,17 @@ const Participants = () => {
         </Dialog>
 
         {/* Template Selection Dialog */}
-        <Dialog open={templateDialog} onClose={() => setTemplateDialog(false)}>
+        <Dialog open={templateDialog} onClose={() => {
+          setTemplateDialog(false);
+          setCurrentParticipant(null);
+        }}>
           <DialogTitle>Pilih Template Sertifikat</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Pilih template sertifikat untuk mengunduh semua sertifikat peserta dalam satu file PDF.
+              {currentParticipant 
+                ? `Pilih template sertifikat untuk mengunduh sertifikat ${currentParticipant.name}.`
+                : 'Pilih template sertifikat untuk mengunduh semua sertifikat peserta dalam satu file PDF.'
+              }
             </Typography>
             {templates.length === 0 ? (
               <Alert severity="warning">
@@ -767,18 +775,39 @@ const Participants = () => {
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setTemplateDialog(false)}>
+            <Button onClick={() => {
+              setTemplateDialog(false);
+              setCurrentParticipant(null);
+            }}>
               Batal
             </Button>
-            <Button
-              onClick={handleBulkDownloadPDF}
-              variant="contained"
-              disabled={!selectedTemplate || bulkPdfDownloading}
-              startIcon={bulkPdfDownloading ? <CircularProgress size={20} /> : <PictureAsPdf />}
-              sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
-            >
-              {bulkPdfDownloading ? 'Mengunduh...' : 'Unduh Semua (PDF)'}
-            </Button>
+            {currentParticipant ? (
+              // Individual download button
+              <Button
+                onClick={() => {
+                  handleGenerateAndDownloadCertificate(currentParticipant.id, currentParticipant.name);
+                  setTemplateDialog(false);
+                  setCurrentParticipant(null);
+                }}
+                variant="contained"
+                disabled={!selectedTemplate || downloading === currentParticipant.id}
+                startIcon={downloading === currentParticipant.id ? <CircularProgress size={20} /> : <Download />}
+                sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
+              >
+                {downloading === currentParticipant.id ? 'Mengunduh...' : 'Unduh Sertifikat'}
+              </Button>
+            ) : (
+              // Bulk download button
+              <Button
+                onClick={handleBulkDownloadPDF}
+                variant="contained"
+                disabled={!selectedTemplate || bulkPdfDownloading}
+                startIcon={bulkPdfDownloading ? <CircularProgress size={20} /> : <PictureAsPdf />}
+                sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
+              >
+                {bulkPdfDownloading ? 'Mengunduh...' : 'Unduh Semua (PDF)'}
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
       </Box>
