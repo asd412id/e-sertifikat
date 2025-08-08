@@ -120,20 +120,6 @@ export const certificateService = {
     return response.data;
   },
 
-  // Generate certificate for one participant
-  generateCertificate: async (templateId, participantId) => {
-    const response = await api.post(`/certificates/templates/${templateId}/participants/${participantId}/generate`);
-    return response.data;
-  },
-
-  // Generate certificates for all participants
-  generateAllCertificates: async (templateId) => {
-    const response = await api.post(`/certificates/templates/${templateId}/generate-all`, {}, {
-      timeout: 600000 // 10 minute timeout for certificate generation
-    });
-    return response.data;
-  },
-
   // Upload background image
   uploadBackground: async (file) => {
     const formData = new FormData();
@@ -155,33 +141,33 @@ export const certificateService = {
     return response.data;
   },
 
-  // Bulk download certificates
-  bulkDownloadCertificates: async (eventId) => {
+  // Bulk download certificates as single PDF
+  bulkDownloadCertificatesPDF: async (eventId, templateId) => {
     try {
-      console.log('Requesting bulk download for event:', eventId);
+      console.log('Requesting bulk PDF download for event:', eventId, 'template:', templateId);
 
-      const response = await api.post(`/certificates/events/${eventId}/bulk-download`, {}, {
+      const response = await api.post(`/certificates/events/${eventId}/templates/${templateId}/bulk-download-pdf`, {}, {
         responseType: 'blob',
-        timeout: 300000 // 5 minute timeout for large downloads
+        timeout: 600000 // 10 minute timeout for large PDF generation
       });
 
-      console.log('Bulk download response received, size:', response.data.size, 'type:', response.data.type);
+      console.log('Bulk PDF download response received, size:', response.data.size, 'type:', response.data.type);
       console.log('Response headers:', response.headers);
 
-      // Check if response is actually a zip blob
+      // Check if response is actually a PDF blob
       if (response.data && response.data.size > 0) {
-        // Verify it's a zip file by checking content type or size
-        if (response.data.type === 'application/zip' || response.headers['content-type'] === 'application/zip') {
+        // Verify it's a PDF file by checking content type
+        if (response.data.type === 'application/pdf' || response.headers['content-type'] === 'application/pdf') {
           return response.data;
         } else {
           console.warn('Response type mismatch, but proceeding with download');
           return response.data;
         }
       } else {
-        throw new Error('File kosong atau tidak valid');
+        throw new Error('File PDF kosong atau tidak valid');
       }
     } catch (error) {
-      console.error('Bulk download service error:', error);
+      console.error('Bulk PDF download service error:', error);
 
       if (error.response) {
         console.log('Error response status:', error.response.status);
@@ -198,6 +184,103 @@ export const certificateService = {
           }
         }
       }
+
+      throw error;
+    }
+  },
+
+  // Generate and download individual certificate
+  generateAndDownloadCertificate: async (templateId, participantId) => {
+    try {
+      console.log('Requesting certificate generation and download for participant:', participantId, 'template:', templateId);
+
+      const response = await api.post(`/certificates/templates/${templateId}/participants/${participantId}/generate-download`, {}, {
+        responseType: 'blob',
+        timeout: 120000 // 2 minute timeout for individual generation
+      });
+
+      console.log('Certificate generation and download response received, size:', response.data.size, 'type:', response.data.type);
+      console.log('Response headers:', response.headers);
+
+      // Check if response is actually a PDF blob
+      if (response.data && response.data.size > 0) {
+        // Verify it's a PDF file by checking content type or size
+        if (response.data.type === 'application/pdf' || response.headers['content-type'] === 'application/pdf') {
+          return response.data;
+        } else {
+          console.warn('Response type mismatch, but proceeding with download');
+          return response.data;
+        }
+      } else {
+        throw new Error('File sertifikat kosong atau tidak valid');
+      }
+    } catch (error) {
+      console.error('Individual certificate generation and download service error:', error);
+
+      if (error.response) {
+        console.log('Error response status:', error.response.status);
+        console.log('Error response headers:', error.response.headers);
+
+        if (error.response.data instanceof Blob) {
+          // Try to parse error from blob
+          const text = await error.response.data.text();
+          try {
+            const errorData = JSON.parse(text);
+            throw new Error(errorData.error || 'Server error');
+          } catch {
+            throw new Error('Server returned an error');
+          }
+        }
+      }
+
+      throw error;
+    }
+  },
+
+  // Bulk download certificates as single PDF
+  bulkDownloadCertificatesPDF: async (eventId, templateId) => {
+    try {
+      console.log('Requesting bulk PDF download for event:', eventId, 'template:', templateId);
+
+      const response = await api.post(`/certificates/events/${eventId}/templates/${templateId}/bulk-download-pdf`, {}, {
+        responseType: 'blob',
+        timeout: 600000 // 10 minute timeout for large PDF generation
+      });
+
+      console.log('Bulk PDF download response received, size:', response.data.size, 'type:', response.data.type);
+      console.log('Response headers:', response.headers);
+
+      // Check if response is actually a PDF blob
+      if (response.data && response.data.size > 0) {
+        // Verify it's a PDF file by checking content type or size
+        if (response.data.type === 'application/pdf' || response.headers['content-type'] === 'application/pdf') {
+          return response.data;
+        } else {
+          console.warn('Response type mismatch, but proceeding with download');
+          return response.data;
+        }
+      } else {
+        throw new Error('File PDF kosong atau tidak valid');
+      }
+    } catch (error) {
+      console.error('Bulk PDF download service error:', error);
+
+      if (error.response) {
+        console.log('Error response status:', error.response.status);
+        console.log('Error response headers:', error.response.headers);
+
+        if (error.response.data instanceof Blob) {
+          // Try to parse error from blob
+          const text = await error.response.data.text();
+          try {
+            const errorData = JSON.parse(text);
+            throw new Error(errorData.error || 'Server error');
+          } catch {
+            throw new Error('Server returned an error');
+          }
+        }
+      }
+
       throw error;
     }
   }

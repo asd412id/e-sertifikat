@@ -42,7 +42,8 @@ import {
   FileUpload,
   Person,
   ArrowBack,
-  Search
+  Search,
+  PictureAsPdf
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
@@ -72,10 +73,13 @@ const Participants = () => {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState(null); // Changed to store participant ID
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedParticipants, setSelectedParticipants] = useState([]);
-  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [templateDialog, setTemplateDialog] = useState(false);
+  const [bulkPdfDownloading, setBulkPdfDownloading] = useState(false);
 
   useEffect(() => {
     if (eventId) {
@@ -308,48 +312,38 @@ const Participants = () => {
     }
   };
 
-  const handleDownloadCertificate = async (certificateUrl) => {
+  const loadTemplates = async () => {
     try {
-      setDownloading(true);
-      // Extract filename from URL
-      const filename = certificateUrl.split('/').pop();
-      const blob = await certificateService.downloadCertificate(filename);
-
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-
-      // Clean up
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const response = await certificateService.getTemplates(eventId);
+      setTemplates(response.data.templates || []);
     } catch (error) {
-      toast.error('Gagal mengunduh sertifikat');
-    } finally {
-      setDownloading(false);
+      console.error('Error loading templates:', error);
+      toast.error('Gagal memuat template sertifikat');
     }
   };
 
-  const handleBulkDownloadCertificates = async () => {
-    try {
-      setBulkDownloading(true);
+  const handleBulkDownloadPDF = async () => {
+    if (!selectedTemplate) {
+      toast.error('Silakan pilih template terlebih dahulu');
+      return;
+    }
 
-      // Call the service to get the zip blob
-      const blob = await certificateService.bulkDownloadCertificates(eventId);
+    try {
+      setBulkPdfDownloading(true);
+
+      // Call the service to get the PDF blob
+      const blob = await certificateService.bulkDownloadCertificatesPDF(eventId, selectedTemplate.id);
 
       // Validate that we received a valid blob
       if (!blob || blob.size === 0) {
-        throw new Error('File kosong atau tidak valid');
+        throw new Error('File PDF kosong atau tidak valid');
       }
 
-      // Create download link for the zip file
+      // Create download link for the PDF file
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `sertifikat_${event?.title?.replace(/[^\w\s-]/g, '') || 'acara'}_${new Date().toISOString().split('T')[0]}.zip`;
+      link.download = `sertifikat_${event?.title?.replace(/[^\w\s-]/g, '') || 'acara'}_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(link);
       link.click();
 
@@ -359,13 +353,67 @@ const Participants = () => {
         window.URL.revokeObjectURL(url);
       }, 100);
 
-      toast.success('Berhasil mengunduh semua sertifikat');
+      toast.success('Berhasil mengunduh sertifikat PDF');
+      setTemplateDialog(false);
     } catch (error) {
-      console.error('Bulk download error:', error);
+      console.error('Bulk PDF download error:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Gagal mengunduh sertifikat PDF';
+      toast.error('Gagal mengunduh sertifikat PDF: ' + errorMessage);
+    } finally {
+      setBulkPdfDownloading(false);
+    }
+  };
+
+  const handleOpenTemplatePicker = async () => {
+    await loadTemplates();
+    setTemplateDialog(true);
+    setAnchorEl(null);
+  };
+
+  const handleGenerateAndDownloadCertificate = async (participantId, participantName) => {
+    if (!selectedTemplate) {
+      toast.error('Silakan pilih template terlebih dahulu');
+      setTemplateDialog(true);
+      await loadTemplates();
+      return;
+    }
+
+    try {
+      setDownloading(participantId);
+
+      // Call the service to generate and download individual certificate
+      const blob = await certificateService.generateAndDownloadCertificate(selectedTemplate.id, participantId);
+
+      // Validate that we received a valid blob
+      if (!blob || blob.size === 0) {
+        throw new Error('File sertifikat kosong atau tidak valid');
+      }
+
+      // Create download link for the certificate
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = `sertifikat_${participantName?.replace(/[^\w\s-]/g, '') || participantId}_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+
+      toast.success(`Berhasil mengunduh sertifikat untuk ${participantName || 'peserta'}`);
+
+      // Refresh participants data to update certificate status
+      await loadParticipants();
+    } catch (error) {
+      console.error('Individual certificate generation and download error:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Gagal mengunduh sertifikat';
       toast.error('Gagal mengunduh sertifikat: ' + errorMessage);
     } finally {
-      setBulkDownloading(false);
+      setDownloading(null);
     }
   };
 
@@ -436,11 +484,11 @@ const Participants = () => {
             {exporting ? 'Mengekspor...' : 'Ekspor ke Excel'}
           </MenuItem>
           <MenuItem
-            onClick={() => { handleBulkDownloadCertificates(); setAnchorEl(null); }}
-            disabled={bulkDownloading}
+            onClick={handleOpenTemplatePicker}
+            disabled={bulkPdfDownloading}
           >
-            {bulkDownloading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : <FileDownload sx={{ mr: 1 }} />}
-            {bulkDownloading ? 'Mengunduh...' : 'Unduh Semua Sertifikat'}
+            {bulkPdfDownloading ? <CircularProgress size={20} sx={{ mr: 1 }} /> : <PictureAsPdf sx={{ mr: 1 }} />}
+            {bulkPdfDownloading ? 'Mengunduh...' : 'Unduh Semua Sertifikat (PDF)'}
           </MenuItem>
         </Menu>
 
@@ -536,17 +584,18 @@ const Participants = () => {
                               color={participant.certificateGenerated ? 'success' : 'default'}
                               size="small"
                             />
-                            {participant.certificateGenerated && participant.certificateUrl && (
-                              <Tooltip title={downloading ? "Mengunduh..." : "Unduh Sertifikat"}>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleDownloadCertificate(participant.certificateUrl)}
-                                  disabled={downloading}
-                                >
-                                  {downloading ? <CircularProgress size={16} /> : <Download />}
-                                </IconButton>
-                              </Tooltip>
-                            )}
+                            <Tooltip title={downloading === participant.id ? "Mengunduh..." : "Generate & Unduh Sertifikat"}>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleGenerateAndDownloadCertificate(
+                                  participant.id,
+                                  participant.data?.nama || participant.data?.name || `Peserta ${participant.id}`
+                                )}
+                                disabled={downloading === participant.id}
+                              >
+                                {downloading === participant.id ? <CircularProgress size={16} /> : <Download />}
+                              </IconButton>
+                            </Tooltip>
                           </TableCell>
                           <TableCell>
                             <Tooltip title="Edit">
@@ -682,6 +731,53 @@ const Participants = () => {
               sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
             >
               {importing ? 'Mengimpor...' : 'Impor'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Template Selection Dialog */}
+        <Dialog open={templateDialog} onClose={() => setTemplateDialog(false)}>
+          <DialogTitle>Pilih Template Sertifikat</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Pilih template sertifikat untuk mengunduh semua sertifikat peserta dalam satu file PDF.
+            </Typography>
+            {templates.length === 0 ? (
+              <Alert severity="warning">
+                Belum ada template sertifikat. Silakan buat template terlebih dahulu.
+              </Alert>
+            ) : (
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel>Template Sertifikat</InputLabel>
+                <Select
+                  value={selectedTemplate?.id || ''}
+                  onChange={(e) => {
+                    const template = templates.find(t => t.id === e.target.value);
+                    setSelectedTemplate(template);
+                  }}
+                  label="Template Sertifikat"
+                >
+                  {templates.map((template) => (
+                    <MenuItem key={template.id} value={template.id}>
+                      {template.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setTemplateDialog(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={handleBulkDownloadPDF}
+              variant="contained"
+              disabled={!selectedTemplate || bulkPdfDownloading}
+              startIcon={bulkPdfDownloading ? <CircularProgress size={20} /> : <PictureAsPdf />}
+              sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
+            >
+              {bulkPdfDownloading ? 'Mengunduh...' : 'Unduh Semua (PDF)'}
             </Button>
           </DialogActions>
         </Dialog>

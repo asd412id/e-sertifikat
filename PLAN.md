@@ -19,7 +19,7 @@
 ## Performance & Reliability Improvements
 
 ### Backend Optimizations
-1. **Batch Processing**: Implemented batch processing in `CertificateService.js` to handle large numbers of certificates
+1. **Parallel Processing**: Implemented parallel processing in `CertificateService.js` to handle multiple certificates simultaneously (configurable concurrency limit, default 5)
 2. **Resource Management**: Added proper resource cleanup and error handling
 3. **Timeout Configuration**: Increased timeout values in `server.js` for long-running operations
 4. **Memory Management**: Added resource limits in `compose.yml` for the app service

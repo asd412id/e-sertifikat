@@ -116,42 +116,45 @@ class CertificateController {
     }
   }
 
-  async generateCertificate(request, reply) {
+  async generateAndDownloadCertificate(request, reply) {
     try {
       const { templateId, participantId } = request.params;
 
+      // Generate the certificate first
       const result = await CertificateService.generateCertificate(
         parseInt(templateId),
         parseInt(participantId),
         request.user.userId
       );
 
-      reply.send({
-        success: true,
-        message: 'Certificate generated successfully',
-        data: result
-      });
-    } catch (error) {
-      reply.status(400).send({
-        error: error.message
-      });
-    }
-  }
+      if (!result.certificate || !result.certificate.certificateUrl) {
+        return reply.status(404).send({
+          error: 'Certificate generation failed'
+        });
+      }
 
-  async generateAllCertificates(request, reply) {
-    try {
-      const { templateId } = request.params;
+      // Extract filename from URL
+      const filename = result.certificate.certificateUrl.split('/').pop();
+      const filePath = path.join(process.env.UPLOAD_DIR || './uploads', filename);
 
-      const result = await CertificateService.generateAllCertificates(
-        parseInt(templateId),
-        request.user.userId
-      );
+      // Check if file exists
+      try {
+        await fs.access(filePath);
+      } catch {
+        return reply.status(404).send({
+          error: 'Certificate file not found'
+        });
+      }
 
-      reply.send({
-        success: true,
-        message: 'Certificates generation completed',
-        data: result
-      });
+      // Read the file and send it directly
+      const fileBuffer = await fs.readFile(filePath);
+
+      // Set headers for PDF download
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+      reply.header('Content-Length', fileBuffer.length);
+
+      reply.send(fileBuffer);
     } catch (error) {
       reply.status(400).send({
         error: error.message
@@ -189,13 +192,11 @@ class CertificateController {
     }
   }
 
-  async bulkDownloadCertificates(request, reply) {
+  async bulkDownloadCertificatesPDF(request, reply) {
     try {
-      const { eventId } = request.params;
-      // Note: We're not using participantIds from request.body anymore
-      // Instead, we'll fetch all participants with generated certificates for this event
+      const { eventId, templateId } = request.params;
 
-      console.log(`Bulk download request for event ${eventId}`);
+      console.log(`Bulk PDF download request for event ${eventId} with template ${templateId}`);
 
       // Get event and verify ownership
       const event = await Event.findOne({
@@ -209,129 +210,51 @@ class CertificateController {
         });
       }
 
-      // Get all participants with generated certificates for this event
+      // Get template and verify ownership
+      const template = await CertificateService.getTemplateById(parseInt(templateId), request.user.userId);
+      if (!template) {
+        console.log('Template not found');
+        return reply.status(404).send({
+          error: 'Template not found'
+        });
+      }
+
+      // Get all participants for this event
       const participants = await Participant.findAll({
         where: {
-          eventId: eventId,
-          certificateGenerated: true
+          eventId: eventId
         },
         order: [['id', 'ASC']]
       });
 
       if (participants.length === 0) {
-        console.log('No participants with certificates found');
+        console.log('No participants found');
         return reply.status(404).send({
-          error: 'No certificates found for this event'
+          error: 'No participants found for this event'
         });
       }
 
-      console.log(`Found ${participants.length} participants with certificates`);
+      console.log(`Found ${participants.length} participants for bulk PDF generation`);
 
-      // Create a zip file containing all certificates
-      const archive = archiver('zip', {
-        zlib: { level: 9 } // Sets the compression level
-      });
+      // Use PuppeteerPDFService to generate bulk PDF
+      const PuppeteerPDFService = require('../services/PuppeteerPDFService');
+      const pdfBuffer = await PuppeteerPDFService.createBulkPDFFromTemplate(template, participants);
 
-      // Collect the archive data in a buffer
-      const chunks = [];
-
-      archive.on('data', (chunk) => {
-        chunks.push(chunk);
-      });
-
-      archive.on('error', (err) => {
-        console.error('Archive error:', err);
-        if (!reply.sent) {
-          reply.status(500).send({ error: 'Error creating zip file' });
-        }
-      });
-
-      archive.on('warning', (err) => {
-        if (err.code === 'ENOENT') {
-          console.warn('Archive warning:', err);
-        } else {
-          console.error('Archive warning (critical):', err);
-        }
-      });
-
-      let filesAdded = 0;
-
-      // Add each certificate to the zip
-      for (const participant of participants) {
-        if (participant.certificateUrl) {
-          const filename = participant.certificateUrl.split('/').pop();
-          const filePath = path.join(process.env.UPLOAD_DIR || './uploads', filename);
-
-          try {
-            // Check if file exists before adding
-            await fs.access(filePath);
-            const stats = await fs.stat(filePath);
-
-            if (stats.size > 0) {
-              const displayName = participant.data && (participant.data.nama || participant.data.name) ?
-                (participant.data.nama || participant.data.name).replace(/[^\w\s-]/g, '') : 'participant';
-              archive.file(filePath, { name: `${displayName}_${filename}` });
-              filesAdded++;
-              console.log(`Added certificate for ${displayName}: ${filename}`);
-            } else {
-              console.log(`Certificate file is empty for participant ${participant.id}: ${filePath}`);
-            }
-          } catch (fileError) {
-            console.log(`Certificate file not found for participant ${participant.id}: ${filePath}`);
-            // Update participant record to mark certificate as not generated
-            try {
-              await participant.update({
-                certificateGenerated: false,
-                certificateUrl: null
-              });
-              console.log(`Updated participant ${participant.id} certificate status to not generated`);
-            } catch (updateError) {
-              console.log(`Failed to update participant ${participant.id} certificate status:`, updateError);
-            }
-            // Continue with other files even if one is missing
-          }
-        }
-      }
-
-      if (filesAdded === 0) {
-        console.log('No valid certificate files found');
-        archive.destroy();
-        return reply.status(404).send({
-          error: 'No certificate files found on server'
-        });
-      }
-
-      console.log(`Added ${filesAdded} files to zip`);
-
-      // Finalize the archive and wait for it to complete
-      await new Promise((resolve, reject) => {
-        archive.on('end', () => {
-          console.log('Archive finalized successfully');
-          resolve();
-        });
-
-        archive.on('error', reject);
-
-        archive.finalize();
-      });
-
-      // Combine all chunks into a single buffer
-      const zipBuffer = Buffer.concat(chunks);
-      console.log(`Zip buffer size: ${zipBuffer.length} bytes`);
-
-      // Set headers for zip download
-      const zipFileName = `sertifikat_${event.title?.replace(/[^\w\s-]/g, '') || eventId}.zip`;
-      reply.header('Content-Type', 'application/zip');
-      reply.header('Content-Disposition', `attachment; filename="${zipFileName}"`);
-      reply.header('Content-Length', zipBuffer.length);
+      // Set headers for PDF download
+      const pdfFileName = `sertifikat_${event.title?.replace(/[^\w\s-]/g, '') || eventId}.pdf`;
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${pdfFileName}"`);
+      reply.header('Content-Length', pdfBuffer.length);
       reply.header('Access-Control-Allow-Origin', '*');
       reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       reply.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
 
-      // Send the zip buffer
-      reply.send(zipBuffer);
+      console.log(`Sending bulk PDF file: ${pdfFileName} (${pdfBuffer.length} bytes)`);
+
+      // Send the PDF buffer
+      reply.send(pdfBuffer);
     } catch (error) {
-      console.error('Bulk download error:', error);
+      console.error('Bulk PDF download error:', error);
       if (!reply.sent) {
         reply.status(500).send({
           error: error.message

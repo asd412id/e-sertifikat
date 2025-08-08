@@ -8,7 +8,7 @@ Sistem manajemen sertifikat digital yang memungkinkan pengguna untuk membuat keg
 - **Manajemen Kegiatan**: Membuat dan mengelola event dengan konfigurasi field peserta
 - **Manajemen Peserta**: Import data peserta melalui Excel atau input manual
 - **Template Sertifikat Dinamis**: Editor visual dengan Konva.js untuk membuat template
-- **Generate Sertifikat**: Otomatis generate sertifikat PDF untuk peserta
+- **Generate Sertifikat**: Otomatis generate sertifikat PDF untuk peserta (dengan pemrosesan paralel untuk kecepatan)
 
 ## Teknologi
 
@@ -74,6 +74,9 @@ JWT_EXPIRES_IN=7d
 
 PORT=3000
 NODE_ENV=development
+
+# Optional: Configure certificate generation concurrency (default: 5)
+CERTIFICATE_CONCURRENCY_LIMIT=5
 ```
 
 ### 4. Setup Frontend

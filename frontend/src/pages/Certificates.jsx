@@ -387,50 +387,37 @@ const Certificates = () => {
     }
   };
 
-  const handleGenerateAll = async (templateId) => {
+  const handleDownloadAll = async (templateId) => {
     try {
       setGenerating(true);
-      toast.loading('Memulai proses generate sertifikat... Ini mungkin memakan waktu beberapa menit.', { duration: 5000 });
+      toast.loading('Memulai proses download sertifikat... Ini mungkin memakan waktu beberapa menit.', { duration: 5000 });
 
-      const response = await certificateService.generateAllCertificates(templateId);
+      const blob = await certificateService.bulkDownloadCertificatesPDF(eventId, templateId);
 
-      if (response.success) {
-        const { success, failed } = response.data;
-        if (failed > 0) {
-          toast(
-            <div>
-              Generate selesai: {success} berhasil, {failed} gagal
-              <br />
-              <Button
-                size="small"
-                variant="text"
-                onClick={() => navigate(`/participants/${eventId}`)}
-                sx={{ mt: 1 }}
-              >
-                Lihat Peserta
-              </Button>
-            </div>
-          );
-        } else {
-          toast.success(
-            <div>
-              Generate berhasil {success} certificates
-              <br />
-              <Button
-                size="small"
-                variant="text"
-                onClick={() => navigate(`/participants/${eventId}`)}
-                sx={{ mt: 1 }}
-              >
-                Lihat Peserta
-              </Button>
-            </div>
-          );
-        }
+      // Validate that we received a valid blob
+      if (!blob || blob.size === 0) {
+        throw new Error('File PDF kosong atau tidak valid');
       }
+
+      // Create download link for the PDF file
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `sertifikat_semua_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+
+      toast.success('Berhasil mengunduh semua sertifikat dalam satu file PDF');
     } catch (error) {
-      console.error('Certificate generation error:', error);
-      toast.error('Gagal mengenerate sertifikat. Silakan coba lagi.');
+      console.error('Bulk download error:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Gagal mengunduh sertifikat';
+      toast.error('Gagal mengunduh sertifikat: ' + errorMessage);
     } finally {
       setGenerating(false);
       setAnchorEl(null);
@@ -640,11 +627,11 @@ const Certificates = () => {
                         variant="contained"
                         size="small"
                         startIcon={generating ? <CircularProgress size={16} /> : <GetApp />}
-                        onClick={() => handleGenerateAll(template.id)}
+                        onClick={() => handleDownloadAll(template.id)}
                         disabled={generating || participants.length === 0}
                         sx={{ flex: 1, borderRadius: 2 }}
                       >
-                        Generate Semua
+                        Download Semua
                       </Button>
                     </Stack>
                   </CardActions>
