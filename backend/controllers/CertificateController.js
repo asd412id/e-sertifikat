@@ -140,14 +140,16 @@ class CertificateController {
           const oldFilePath = path.join(process.env.UPLOAD_DIR || './uploads', oldFileName);
           try {
             await fs.unlink(oldFilePath);
+            console.log('Successfully cleaned up old certificate file:', oldFilePath);
           } catch (err) {
             // ignore if doesn't exist
-            console.log('Cleanup old certificate file failed (ignored):', oldFilePath);
+            console.log('Cleanup old certificate file failed (ignored):', oldFilePath, '-', err.message);
           }
         }
         // Reset participant stored status so UI no longer relies on it
         try {
           await participant.update({ certificateGenerated: false, certificateUrl: null });
+          console.log('Successfully reset participant certificate flags');
         } catch (e) {
           console.log('Failed to reset participant certificate flags (ignored):', e.message);
         }

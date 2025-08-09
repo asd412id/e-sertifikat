@@ -147,7 +147,7 @@ class PuppeteerPDFService {
 
       // Explicitly load all fonts before proceeding
       await page.evaluate(() => {
-        const MAX_WAIT = 8000; // 8s cap
+        const MAX_WAIT = 10000; // Increased to 10s cap
         const start = Date.now();
         return new Promise((resolve) => {
           if (!document.fonts) return setTimeout(resolve, 1500);
@@ -156,14 +156,14 @@ class PuppeteerPDFService {
             if (!pending.length || Date.now() - start > MAX_WAIT) {
               requestAnimationFrame(() => resolve());
             } else {
-              setTimeout(check, 250);
+              setTimeout(check, 500); // Increased check interval
             }
           };
           if (document.fonts.status === 'loaded') {
             return resolve();
           }
           document.fonts.ready.finally(check);
-          setTimeout(check, 250);
+          setTimeout(check, 500);
         });
       });
 
@@ -573,21 +573,23 @@ class PuppeteerPDFService {
 
       // Explicitly load all fonts before proceeding
       await page.evaluate(() => {
-        const MAX_WAIT = 6000; // 6s cap
+        const MAX_WAIT = 10000; // Increased to 10s cap
         const start = Date.now();
         return new Promise(resolve => {
-          if (!document.fonts) return setTimeout(resolve, 1200);
+          if (!document.fonts) return setTimeout(resolve, 1500);
           const check = () => {
             const pending = Array.from(document.fonts).filter(f => f.status !== 'loaded');
             if (!pending.length || Date.now() - start > MAX_WAIT) {
               requestAnimationFrame(resolve);
             } else {
-              setTimeout(check, 200);
+              setTimeout(check, 500); // Increased check interval
             }
           };
-          if (document.fonts.status === 'loaded') return resolve();
+          if (document.fonts.status === 'loaded') {
+            return resolve();
+          }
           document.fonts.ready.finally(check);
-          setTimeout(check, 200);
+          setTimeout(check, 500);
         });
       });
 

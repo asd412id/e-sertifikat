@@ -392,7 +392,18 @@ const Certificates = () => {
       setGenerating(true);
       toast.loading('Memulai proses download sertifikat... Ini mungkin memakan waktu beberapa menit.', { duration: 5000 });
 
-      const blob = await certificateService.bulkDownloadCertificatesPDF(eventId, templateId);
+      const response = await certificateService.bulkDownloadCertificatesPDF(eventId, templateId);
+
+      // Handle both blob and response object
+      let blob;
+      if (response instanceof Blob) {
+        blob = response;
+      } else if (response.data) {
+        // If it's a response object with data
+        blob = new Blob([response.data], { type: 'application/pdf' });
+      } else {
+        throw new Error('Format respons tidak valid');
+      }
 
       // Validate that we received a valid blob
       if (!blob || blob.size === 0) {
