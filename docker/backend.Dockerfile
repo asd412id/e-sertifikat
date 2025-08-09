@@ -16,3 +16,5 @@ RUN npm install --omit=dev && npm cache clean --force
 # Install Playwright browsers (Chromium only to save space)
 RUN npx playwright install --with-deps chromium && \
   npx puppeteer browsers install chrome
+
+RUN cd ../frontend && npm install --omit=dev && npm run build && npm cache clean --force
