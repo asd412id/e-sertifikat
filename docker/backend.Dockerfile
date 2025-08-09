@@ -11,10 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libjpeg62-turbo libpng16-16 fontconfig libfreetype6 libxext6 libxi6 \
   wkhtmltopdf && rm -rf /var/lib/apt/lists/*
 
-RUN npm install --omit=dev && npm cache clean --force
-
 # Install Playwright browsers (Chromium only to save space)
 RUN npx playwright install --with-deps chromium && \
   npx puppeteer browsers install chrome
-
-RUN sh -c "cd ../frontend && npm install --omit=dev && npm run build && npm cache clean --force"
