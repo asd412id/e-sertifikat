@@ -11,16 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libjpeg62-turbo libpng16-16 fontconfig libfreetype6 libxext6 libxi6 \
   wkhtmltopdf && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-COPY backend/package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
 # Install Playwright browsers (Chromium only to save space)
 RUN npx playwright install --with-deps chromium && \
   npx puppeteer browsers install chrome
-
-COPY backend .
-
-EXPOSE 3000
-CMD ["node", "server.js"]
