@@ -581,12 +581,7 @@ const Participants = () => {
                             </TableCell>
                           ))}
                           <TableCell>
-                            <Chip
-                              label={participant.certificateGenerated ? 'Tergenerate' : 'Belum'}
-                              color={participant.certificateGenerated ? 'success' : 'default'}
-                              size="small"
-                            />
-                            <Tooltip title={downloading === participant.id ? "Mengunduh..." : "Generate & Unduh Sertifikat"}>
+                            <Tooltip title={downloading === participant.id ? "Mengunduh..." : "Unduh Sertifikat (Generate On-Demand)"}>
                               <IconButton
                                 size="small"
                                 onClick={() => handleGenerateAndDownloadCertificate(
@@ -745,7 +740,7 @@ const Participants = () => {
           <DialogTitle>Pilih Template Sertifikat</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {currentParticipant 
+              {currentParticipant
                 ? `Pilih template sertifikat untuk mengunduh sertifikat ${currentParticipant.name}.`
                 : 'Pilih template sertifikat untuk mengunduh semua sertifikat peserta dalam satu file PDF.'
               }

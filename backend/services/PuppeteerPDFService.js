@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
-const { el } = require('date-fns/locale');
+// Removed unused locale import
 
 class PuppeteerPDFService {
   constructor() {
@@ -65,11 +65,12 @@ class PuppeteerPDFService {
     try {
       await this.initialize();
       page = await this.browser.newPage();
+      await page.setCacheEnabled(true);
 
       // Set a longer timeout for page operations
-      page.setDefaultTimeout(120000); // 2 minutes for bulk operations
+      page.setDefaultTimeout(90000); // Slightly reduced to fail faster if stuck
 
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3');
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
 
       // Enable local file access
       await page.setRequestInterception(true);
@@ -98,6 +99,9 @@ class PuppeteerPDFService {
               request.respond({
                 status: 200,
                 contentType: contentType,
+                headers: {
+                  'Cache-Control': 'public, max-age=31536000'
+                },
                 body: data
               });
             } else {
@@ -130,8 +134,8 @@ class PuppeteerPDFService {
 
       // Set content and wait for it to load
       await page.setContent(htmlContent, {
-        waitUntil: 'networkidle0',
-        timeout: 60000 // 60 seconds timeout
+        waitUntil: 'domcontentloaded', // Faster; we manually manage font loading below
+        timeout: 45000
       });
 
       // Set viewport to match template dimensions for better rendering
@@ -143,40 +147,23 @@ class PuppeteerPDFService {
 
       // Explicitly load all fonts before proceeding
       await page.evaluate(() => {
+        const MAX_WAIT = 8000; // 8s cap
+        const start = Date.now();
         return new Promise((resolve) => {
-          if (document.fonts) {
-            console.log('Loading fonts for bulk generation...');
-
-            // Wait for fonts to load with timeout
-            const startTime = Date.now();
-            const maxWaitTime = 15000; // 15 seconds max wait for bulk
-
-            const waitForFonts = () => {
-              if (document.fonts.status === 'loaded' || Date.now() - startTime > maxWaitTime) {
-                if (Date.now() - startTime > maxWaitTime) {
-                  console.log('Font loading timeout reached for bulk generation, proceeding anyway');
-                } else {
-                  console.log('All fonts loaded successfully for bulk generation');
-                }
-                setTimeout(resolve, 1000); // 1 second delay for font rendering
-              } else {
-                setTimeout(waitForFonts, 1000); // Check every 1 second
-              }
-            };
-
-            document.fonts.ready.then(() => {
-              console.log('document.fonts.ready fired for bulk generation');
-              waitForFonts();
-            }).catch((error) => {
-              console.error('document.fonts.ready error for bulk generation:', error);
-              waitForFonts();
-            });
-
-            setTimeout(waitForFonts, 1000);
-          } else {
-            console.log('document.fonts not available for bulk generation, using fallback timeout');
-            setTimeout(resolve, 3000);
+          if (!document.fonts) return setTimeout(resolve, 1500);
+          const check = () => {
+            const pending = Array.from(document.fonts).filter(f => f.status !== 'loaded');
+            if (!pending.length || Date.now() - start > MAX_WAIT) {
+              requestAnimationFrame(() => resolve());
+            } else {
+              setTimeout(check, 250);
+            }
+          };
+          if (document.fonts.status === 'loaded') {
+            return resolve();
           }
+          document.fonts.ready.finally(check);
+          setTimeout(check, 250);
         });
       });
 
@@ -521,11 +508,12 @@ class PuppeteerPDFService {
     try {
       await this.initialize();
       page = await this.browser.newPage();
+      await page.setCacheEnabled(true);
 
       // Set a longer timeout for page operations
-      page.setDefaultTimeout(60000); // 60 seconds
+      page.setDefaultTimeout(45000); // faster fail
 
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3');
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
       // Enable local file access
       await page.setRequestInterception(true);
 
@@ -583,81 +571,27 @@ class PuppeteerPDFService {
 
       // Set content and wait for it to load
       await page.setContent(htmlContent, {
-        waitUntil: 'networkidle0',
-        timeout: 30000 // 30 seconds timeout
+        waitUntil: 'domcontentloaded',
+        timeout: 30000
       });
 
       // Explicitly load all fonts before proceeding
       await page.evaluate(() => {
-        return new Promise((resolve) => {
-          // Check if all fonts are loaded
-          if (document.fonts) {
-            console.log('Explicitly loading all fonts...');
-
-            // Get all font families from the page
-            const fontFamilies = new Set();
-            const textElements = document.querySelectorAll('div[style*="font-family"]');
-
-            textElements.forEach(element => {
-              const style = window.getComputedStyle(element);
-              const fontFamily = style.fontFamily;
-              if (fontFamily) {
-                // Extract font family names and clean them up
-                const families = fontFamily.split(',').map(f => f.trim().replace(/['"]/g, ''));
-                families.forEach(f => {
-                  if (f && f !== 'sans-serif' && f !== 'serif' && f !== 'monospace' && f !== 'cursive' && f !== 'fantasy') {
-                    fontFamilies.add(f);
-                  }
-                });
-              }
-            });
-
-            console.log('Found font families:', Array.from(fontFamilies));
-
-            // Check if Google Fonts are already loaded
-            const checkFontsLoaded = () => {
-              const loadedFonts = Array.from(document.fonts).filter(font => font.status === 'loaded');
-              console.log('Currently loaded fonts:', loadedFonts.map(f => `${f.family} ${f.weight}`));
-
-              return Array.from(fontFamilies).every(family => {
-                return Array.from(document.fonts).some(font =>
-                  font.family.replace(/['"]/g, '') === family && font.status === 'loaded'
-                );
-              });
-            };
-
-            // Wait for fonts to load with timeout
-            const startTime = Date.now();
-            const maxWaitTime = 10000; // 10 seconds max wait
-
-            const waitForFonts = () => {
-              if (checkFontsLoaded() || Date.now() - startTime > maxWaitTime) {
-                if (Date.now() - startTime > maxWaitTime) {
-                  console.log('Font loading timeout reached, proceeding anyway');
-                } else {
-                  console.log('All fonts loaded successfully');
-                }
-                setTimeout(resolve, 2000); // Additional 2 second delay for font rendering
-              } else {
-                setTimeout(waitForFonts, 500); // Check every 500ms
-              }
-            };
-
-            // Start waiting for fonts
-            document.fonts.ready.then(() => {
-              console.log('document.fonts.ready fired');
-              waitForFonts();
-            }).catch((error) => {
-              console.error('document.fonts.ready error:', error);
-              waitForFonts();
-            });
-
-            // Also start waiting immediately in case fonts.ready doesn't fire
-            setTimeout(waitForFonts, 1000);
-          } else {
-            console.log('document.fonts not available, using fallback timeout');
-            setTimeout(resolve, 5000);
-          }
+        const MAX_WAIT = 6000; // 6s cap
+        const start = Date.now();
+        return new Promise(resolve => {
+          if (!document.fonts) return setTimeout(resolve, 1200);
+          const check = () => {
+            const pending = Array.from(document.fonts).filter(f => f.status !== 'loaded');
+            if (!pending.length || Date.now() - start > MAX_WAIT) {
+              requestAnimationFrame(resolve);
+            } else {
+              setTimeout(check, 200);
+            }
+          };
+          if (document.fonts.status === 'loaded') return resolve();
+          document.fonts.ready.finally(check);
+          setTimeout(check, 200);
         });
       });
 
@@ -775,7 +709,7 @@ class PuppeteerPDFService {
         });
 
         // Wait a bit more for fonts to load
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Generate PDF with optimized settings
