@@ -30,6 +30,8 @@
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
     "puppeteer": "^24.15.0",
+    "playwright": "^1.45.0",
+    "wkhtmltopdf": "^0.4.0",
     "sequelize": "^6.35.0",
     "sharp": "^0.32.6",
     "xlsx": "^0.18.5"

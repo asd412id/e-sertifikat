@@ -1,5 +1,6 @@
 const { CertificateTemplate, Event, Participant, sequelize } = require('../models');
 const puppeteerPDFService = require('./PuppeteerPDFService');
+const wkhtmlPDFService = require('./WkhtmlPDFService');
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -307,11 +308,26 @@ class CertificateService {
   }
 
   async createPDFFromTemplate(template, participant) {
-    try {
-      // Use Puppeteer for better font support
+    const engine = (process.env.PDF_ENGINE || '').toLowerCase();
+    // Priority: explicit engine -> fallbacks chain
+    const playwrightPDFService = require('./PlaywrightPDFService');
+    if (engine === 'wkhtml') {
+      try { return await wkhtmlPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('WKHTML failed:', e.message); }
+      try { return await playwrightPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('Playwright fallback failed:', e.message); }
       return await puppeteerPDFService.createPDFFromTemplate(template, participant);
-    } catch (error) {
-      console.log('Puppeteer failed:', error);
+    } else if (engine === 'playwright') {
+      try { return await playwrightPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('Playwright failed:', e.message); }
+      try { return await wkhtmlPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('WKHTML fallback failed:', e.message); }
+      return await puppeteerPDFService.createPDFFromTemplate(template, participant);
+    } else if (engine === 'puppeteer') {
+      try { return await puppeteerPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('Puppeteer failed:', e.message); }
+      try { return await playwrightPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('Playwright fallback failed:', e.message); }
+      return await wkhtmlPDFService.createPDFFromTemplate(template, participant);
+    } else {
+      // Auto mode: try playwright first (faster startup often), then puppeteer, then wkhtml
+      try { return await playwrightPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('Playwright auto failed:', e.message); }
+      try { return await puppeteerPDFService.createPDFFromTemplate(template, participant); } catch (e) { console.error('Puppeteer auto failed:', e.message); }
+      return await wkhtmlPDFService.createPDFFromTemplate(template, participant);
     }
   }
 
