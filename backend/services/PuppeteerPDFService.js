@@ -227,20 +227,15 @@ class PuppeteerPDFService {
     let googleFontsImport = '';
     const googleFonts = [];
 
-    // Define Google Fonts that are available
-    const googleFontsList = [
-      'Pacifico', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald',
-      'Source Sans Pro', 'Raleway', 'Poppins', 'Nunito', 'Ubuntu', 'Playfair Display',
-      'Merriweather', 'Lora', 'Fira Sans', 'Work Sans', 'Crimson Text', 'Dancing Script'
-    ];
-
-    // System/Web-safe fonts that don't need Google Fonts
+    // System/Web-safe fonts that don't need remote fetching
     const systemFonts = [
       'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
       'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
       'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
       'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium'
     ];
+    // Dynamic Google fonts list (any non-system font)
+    const dynamicGoogleFonts = new Set();
 
     // Create a comprehensive mapping for CSS font-family property
     const cssFontFamilyMap = {
@@ -269,7 +264,8 @@ class PuppeteerPDFService {
       if (!cleanFontFamily) continue;
 
       // Check if this is a Google Font
-      if (googleFontsList.includes(cleanFontFamily)) {
+      if (!systemFonts.includes(cleanFontFamily)) {
+        dynamicGoogleFonts.add(cleanFontFamily);
         let googleFontName = cleanFontFamily.replace(/\s+/g, '+');
 
         // Collect all font weights and styles used for this font
@@ -323,7 +319,7 @@ class PuppeteerPDFService {
     // Add Google Fonts import to HTML
     if (googleFonts.length > 0) {
       const fontsQuery = googleFonts.join('&family=');
-      googleFontsImport = `<link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
+      googleFontsImport = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
       console.log(`Google Fonts import URL: https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`);
     }
 
@@ -426,7 +422,7 @@ class PuppeteerPDFService {
               // Use the pre-defined CSS font-family mapping first
               if (cssFontFamilyMap[cleanFontFamily]) {
                 styles.push(`font-family: ${cssFontFamilyMap[cleanFontFamily]}`);
-              } else if (googleFontsList.includes(cleanFontFamily)) {
+              } else if (!systemFonts.includes(cleanFontFamily)) {
                 // For Google Fonts, use the exact name with proper quotes and fallbacks
                 styles.push(`font-family: '${cleanFontFamily}', sans-serif`);
               } else if (systemFonts.includes(cleanFontFamily)) {
@@ -762,20 +758,15 @@ class PuppeteerPDFService {
     const googleFonts = [];
     const fontWeights = new Set();
 
-    // Define Google Fonts that are available
-    const googleFontsList = [
-      'Pacifico', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald',
-      'Source Sans Pro', 'Raleway', 'Poppins', 'Nunito', 'Ubuntu', 'Playfair Display',
-      'Merriweather', 'Lora', 'Fira Sans', 'Work Sans', 'Crimson Text', 'Dancing Script'
-    ];
-
-    // System/Web-safe fonts that don't need Google Fonts
+    // System/Web-safe fonts that don't need remote fetching
     const systemFonts = [
       'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
       'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
       'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
       'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium'
     ];
+    // Dynamic Google fonts list
+    const dynamicGoogleFonts = new Set();
 
     // Create a comprehensive mapping for CSS font-family property
     const cssFontFamilyMap = {
@@ -805,7 +796,8 @@ class PuppeteerPDFService {
       if (!cleanFontFamily) continue;
 
       // Check if this is a Google Font
-      if (googleFontsList.includes(cleanFontFamily)) {
+      if (!systemFonts.includes(cleanFontFamily)) {
+        dynamicGoogleFonts.add(cleanFontFamily);
         // Convert font name to Google Fonts format
         let googleFontName = cleanFontFamily.replace(/\s+/g, '+');
 
@@ -860,7 +852,7 @@ class PuppeteerPDFService {
     // Add Google Fonts import to HTML
     if (googleFonts.length > 0) {
       const fontsQuery = googleFonts.join('&family=');
-      googleFontsImport = `<link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
+      googleFontsImport = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
       console.log(`Google Fonts import URL: https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`);
     }
 
@@ -939,7 +931,7 @@ class PuppeteerPDFService {
             // Use the pre-defined CSS font-family mapping first
             if (cssFontFamilyMap[cleanFontFamily]) {
               styles.push(`font-family: ${cssFontFamilyMap[cleanFontFamily]}`);
-            } else if (googleFontsList.includes(cleanFontFamily)) {
+            } else if (!systemFonts.includes(cleanFontFamily)) {
               // For Google Fonts, use the exact name with proper quotes and fallbacks
               styles.push(`font-family: '${cleanFontFamily}', sans-serif`);
             } else if (systemFonts.includes(cleanFontFamily)) {
