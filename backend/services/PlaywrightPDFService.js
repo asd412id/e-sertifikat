@@ -24,10 +24,31 @@ class PlaywrightPDFService {
       const uniq = [...new Set(googleFonts)];
       fontLinks = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?${uniq.map(f => `family=${f}:wght@300;400;500;600;700`).join('&')}&display=swap" rel="stylesheet">`;
     }
-    let html = `<!DOCTYPE html><html><head><meta charset='UTF-8'>${fontLinks}<style>@page{size:${template.width}px ${template.height}px;margin:0;}body{margin:0;padding:0;width:${template.width}px;height:${template.height}px;position:relative;font-family:Arial,sans-serif;} .container{width:100%;height:100%;position:relative;}`;
+    let html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=${template.width},initial-scale=1.0'>${fontLinks}<style>@page{size:${template.width}px ${template.height}px;margin:0;}html,body{margin:0;padding:0;width:${template.width}px;height:${template.height}px;overflow:hidden;}body{position:relative;font-family:Arial,sans-serif;} .container{width:100%;height:100%;position:relative;}`;
     if (template.design?.background) {
-      let bg = template.design.background; if (bg.startsWith('/uploads/')) { bg = `${process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT}`}${bg}`; }
-      html += `.container{background-image:url('${bg}');background-size:cover;background-position:center;background-repeat:no-repeat;}`;
+      let bg = template.design.background;
+      if (bg.startsWith('/uploads/')) {
+        // Try to inline the background as data URI to avoid network fetch issues
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const uploadDir = process.env.UPLOAD_DIR || './uploads';
+          const fileName = bg.replace('/uploads/', '');
+          const filePath = path.join(uploadDir, fileName);
+          if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath);
+            const ext = path.extname(filePath).toLowerCase();
+            const mime = ext === '.png' ? 'image/png' : (ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'application/octet-stream');
+            bg = `data:${mime};base64,${data.toString('base64')}`;
+          } else {
+            // fallback to absolute URL
+            bg = `${process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT}`}${bg}`;
+          }
+        } catch (e) {
+          bg = `${process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT}`}${bg}`;
+        }
+      }
+      html += `.container{background-image:url('${bg}');background-size:${template.width}px ${template.height}px;background-position:0 0;background-repeat:no-repeat;}`;
     }
     html += '</style></head><body><div class="container">';
     if (template.design?.objects) {
@@ -38,6 +59,7 @@ class PlaywrightPDFService {
           const x = el.x || 0, y = el.y || 0, w = el.width || 200, h = (el.fontSize ? el.fontSize * 1.3 : 32);
           styles.push(`left:${x}px`, `top:${y}px`, `width:${w}px`, `height:${h}px`);
           if (el.fontSize) styles.push(`font-size:${el.fontSize}px`);
+          if (el.fontSize) styles.push(`line-height:${el.fontSize * 1.05}px`);
           if (el.fontFamily) styles.push(`font-family:'${el.fontFamily.replace(/['"]/g, '').trim()}',sans-serif`);
           if (el.fill) styles.push(`color:${el.fill}`);
           if (el.fontWeight) styles.push(`font-weight:${el.fontWeight}`);
@@ -50,6 +72,7 @@ class PlaywrightPDFService {
             if (el.align === 'right') styles.push('align-items:flex-end'); else if (el.align === 'center') styles.push('align-items:center'); else styles.push('align-items:flex-start');
           }
           styles.push('white-space:pre');
+          styles.push('transform:translateZ(0)');
           html += `<div style="${styles.join(';')}">${text}</div>`;
         }
       }

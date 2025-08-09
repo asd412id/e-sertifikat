@@ -259,23 +259,25 @@ class CertificateController {
       // Use PuppeteerPDFService to generate bulk PDF
       let pdfBuffer;
       const engine = (process.env.PDF_ENGINE || '').toLowerCase();
+      let engineUsed = '';
       if (engine === 'wkhtml') {
-        try { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('WKHTML bulk failed:', e.message); }
-        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Playwright bulk fallback failed:', e.message); } }
-        if (!pdfBuffer) { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); }
+        try { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'wkhtml'; } catch (e) { console.error('WKHTML bulk failed:', e.message); }
+        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'playwright(fallback)'; } catch (e) { console.error('Playwright bulk fallback failed:', e.message); } }
+        if (!pdfBuffer) { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'puppeteer(fallback)'; }
       } else if (engine === 'playwright') {
-        try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Playwright bulk failed:', e.message); }
-        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Puppeteer bulk fallback failed:', e.message); } }
-        if (!pdfBuffer) { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); }
+        try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'playwright'; } catch (e) { console.error('Playwright bulk failed:', e.message); }
+        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'puppeteer(fallback)'; } catch (e) { console.error('Puppeteer bulk fallback failed:', e.message); } }
+        if (!pdfBuffer) { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'wkhtml(fallback)'; }
       } else if (engine === 'puppeteer') {
-        try { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Puppeteer bulk failed:', e.message); }
-        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Playwright bulk fallback failed:', e.message); } }
-        if (!pdfBuffer) { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); }
+        try { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'puppeteer'; } catch (e) { console.error('Puppeteer bulk failed:', e.message); }
+        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'playwright(fallback)'; } catch (e) { console.error('Playwright bulk fallback failed:', e.message); } }
+        if (!pdfBuffer) { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'wkhtml(fallback)'; }
       } else { // auto
-        try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Playwright bulk auto failed:', e.message); }
-        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); } catch (e) { console.error('Puppeteer bulk auto failed:', e.message); } }
-        if (!pdfBuffer) { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); }
+        try { pdfBuffer = await require('../services/PlaywrightPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'playwright(auto)'; } catch (e) { console.error('Playwright bulk auto failed:', e.message); }
+        if (!pdfBuffer) { try { pdfBuffer = await require('../services/PuppeteerPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'puppeteer(auto-fallback)'; } catch (e) { console.error('Puppeteer bulk auto failed:', e.message); } }
+        if (!pdfBuffer) { pdfBuffer = await require('../services/WkhtmlPDFService').createBulkPDFFromTemplate(template, participants); engineUsed = 'wkhtml(auto-fallback)'; }
       }
+      if (engineUsed) reply.header('X-PDF-Engine', engineUsed);
 
       // Set headers for PDF download
       const pdfFileName = `sertifikat_${event.title?.replace(/[^\w\s-]/g, '') || eventId}.pdf`;
