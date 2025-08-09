@@ -17,4 +17,4 @@ RUN npm install --omit=dev && npm cache clean --force
 RUN npx playwright install --with-deps chromium && \
   npx puppeteer browsers install chrome
 
-RUN cd ../frontend && npm install --omit=dev && npm run build && npm cache clean --force
+RUN sh -c "cd ../frontend && npm install --omit=dev && npm run build && npm cache clean --force"
