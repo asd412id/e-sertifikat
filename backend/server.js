@@ -32,6 +32,13 @@ async function start() {
       prefix: '/api/uploads/'
     });
 
+    // Register static file serving for fonts (local cached Google Fonts)
+    await fastify.register(require('@fastify/static'), {
+      root: require('path').join(__dirname, 'fonts'),
+      prefix: '/api/fonts/',
+      decorateReply: false
+    });
+
     // Health check endpoint
     fastify.get('/health', async (request, reply) => {
       return { status: 'OK', timestamp: new Date().toISOString() };

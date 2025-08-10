@@ -88,10 +88,6 @@ jspm_packages/
 # DynamoDB Local files
 .dynamodb/
 
-# Uploads
-uploads/
-!uploads/.gitkeep
-
 # Temporary files
 temp/
 tmp/

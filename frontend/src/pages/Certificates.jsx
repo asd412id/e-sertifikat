@@ -112,6 +112,32 @@ const Certificates = () => {
     width: 200
   });
 
+  // Centralized list of available fonts for selection (includes system and Google fonts)
+  const FONT_FAMILIES = [
+    // Featured elegant/display/script fonts for certificates (curated)
+    'Cinzel', 'Cinzel Decorative', 'Playfair Display', 'Cormorant Garamond', 'EB Garamond',
+    'Libre Baskerville', 'Lora', 'Merriweather', 'Spectral', 'Crimson Text', 'Cardo', 'Prata', 'Marcellus',
+    'Gilda Display', 'Forum', 'Cormorant SC', 'Cormorant Infant', 'Cormorant Upright',
+    'Great Vibes', 'Alex Brush', 'Allura', 'Dancing Script', 'Sacramento', 'Parisienne', 'Tangerine',
+    'Italianno', 'Satisfy', 'Kaushan Script', 'Yeseva One',
+
+    // System and popular sans/serif
+    'Arial', 'Times New Roman', 'Helvetica', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS',
+    'Segoe UI', 'Calibri', 'Cambria', 'Garamond', 'Courier New', 'Brush Script MT', 'Lucida Console',
+    'Monaco', 'Comic Sans MS', 'Impact', 'Palatino', 'Bookman', 'Avant Garde',
+
+    // Additional Google fonts
+    'Abel', 'Abril Fatface', 'Acme', 'Alfa Slab One', 'Amatic SC', 'Anton', 'Architects Daughter',
+    'Archivo Black', 'Archivo Narrow', 'Arimo', 'Arvo', 'Asap', 'Assistant', 'Bangers', 'Bebas Neue',
+    'Bitter', 'Bree Serif', 'Cabin', 'Cairo', 'Catamaran', 'Comfortaa',
+    'Exo 2', 'Fira Sans', 'Fjalla One', 'Francois One', 'Gloria Hallelujah', 'Heebo', 'Hind',
+    'Inconsolata', 'Indie Flower', 'Josefin Sans', 'Jost', 'Karla', 'Lato', 'Lobster', 'Montserrat',
+    'Mukta', 'Nanum Gothic', 'Noto Sans', 'Noto Serif', 'Nunito', 'Open Sans', 'Oswald', 'Overpass',
+    'Oxygen', 'Pacifico', 'Poppins', 'PT Sans', 'PT Serif', 'Quicksand', 'Raleway', 'Roboto',
+    'Roboto Condensed', 'Roboto Mono', 'Roboto Slab', 'Rubik', 'Source Code Pro', 'Source Sans Pro',
+    'Space Mono', 'Titillium Web', 'Ubuntu', 'Work Sans', 'Yanone Kaffeesatz', 'Zilla Slab'
+  ];
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -853,101 +879,16 @@ const Certificates = () => {
                             await handleUpdateTextProperties('fontFamily', font);
                           }}
                         >
-                          <MenuItem value="Arial">Arial</MenuItem>
-                          <MenuItem value="Times New Roman">Times New Roman</MenuItem>
-                          <MenuItem value="Helvetica">Helvetica</MenuItem>
-                          <MenuItem value="Georgia">Georgia</MenuItem>
-                          <MenuItem value="Verdana">Verdana</MenuItem>
-                          <MenuItem value="Tahoma">Tahoma</MenuItem>
-                          <MenuItem value="Trebuchet MS">Trebuchet MS</MenuItem>
-                          <MenuItem value="Segoe UI">Segoe UI</MenuItem>
-                          <MenuItem value="Calibri">Calibri</MenuItem>
-                          <MenuItem value="Cambria">Cambria</MenuItem>
-                          <MenuItem value="Garamond">Garamond</MenuItem>
-                          <MenuItem value="Courier New">Courier New</MenuItem>
-                          <MenuItem value="Brush Script MT">Brush Script MT</MenuItem>
-                          <MenuItem value="Lucida Console">Lucida Console</MenuItem>
-                          <MenuItem value="Monaco">Monaco</MenuItem>
-                          <MenuItem value="Comic Sans MS">Comic Sans MS</MenuItem>
-                          <MenuItem value="Impact">Impact</MenuItem>
-                          <MenuItem value="Palatino">Palatino</MenuItem>
-                          <MenuItem value="Bookman">Bookman</MenuItem>
-                          <MenuItem value="Avant Garde">Avant Garde</MenuItem>
-                          <MenuItem value="Abel">Abel</MenuItem>
-                          <MenuItem value="Abril Fatface">Abril Fatface</MenuItem>
-                          <MenuItem value="Acme">Acme</MenuItem>
-                          <MenuItem value="Alfa Slab One">Alfa Slab One</MenuItem>
-                          <MenuItem value="Amatic SC">Amatic SC</MenuItem>
-                          <MenuItem value="Anton">Anton</MenuItem>
-                          <MenuItem value="Architects Daughter">Architects Daughter</MenuItem>
-                          <MenuItem value="Archivo Black">Archivo Black</MenuItem>
-                          <MenuItem value="Archivo Narrow">Archivo Narrow</MenuItem>
-                          <MenuItem value="Arimo">Arimo</MenuItem>
-                          <MenuItem value="Arvo">Arvo</MenuItem>
-                          <MenuItem value="Asap">Asap</MenuItem>
-                          <MenuItem value="Assistant">Assistant</MenuItem>
-                          <MenuItem value="Bangers">Bangers</MenuItem>
-                          <MenuItem value="Bebas Neue">Bebas Neue</MenuItem>
-                          <MenuItem value="Bitter">Bitter</MenuItem>
-                          <MenuItem value="Bree Serif">Bree Serif</MenuItem>
-                          <MenuItem value="Cabin">Cabin</MenuItem>
-                          <MenuItem value="Cairo">Cairo</MenuItem>
-                          <MenuItem value="Catamaran">Catamaran</MenuItem>
-                          <MenuItem value="Cinzel">Cinzel</MenuItem>
-                          <MenuItem value="Comfortaa">Comfortaa</MenuItem>
-                          <MenuItem value="Cormorant Garamond">Cormorant Garamond</MenuItem>
-                          <MenuItem value="Crimson Text">Crimson Text</MenuItem>
-                          <MenuItem value="Dancing Script">Dancing Script</MenuItem>
-                          <MenuItem value="Dosis">Dosis</MenuItem>
-                          <MenuItem value="EB Garamond">EB Garamond</MenuItem>
-                          <MenuItem value="Exo 2">Exo 2</MenuItem>
-                          <MenuItem value="Fira Sans">Fira Sans</MenuItem>
-                          <MenuItem value="Fjalla One">Fjalla One</MenuItem>
-                          <MenuItem value="Francois One">Francois One</MenuItem>
-                          <MenuItem value="Gloria Hallelujah">Gloria Hallelujah</MenuItem>
-                          <MenuItem value="Heebo">Heebo</MenuItem>
-                          <MenuItem value="Hind">Hind</MenuItem>
-                          <MenuItem value="Inconsolata">Inconsolata</MenuItem>
-                          <MenuItem value="Indie Flower">Indie Flower</MenuItem>
-                          <MenuItem value="Josefin Sans">Josefin Sans</MenuItem>
-                          <MenuItem value="Jost">Jost</MenuItem>
-                          <MenuItem value="Karla">Karla</MenuItem>
-                          <MenuItem value="Lato">Lato</MenuItem>
-                          <MenuItem value="Libre Baskerville">Libre Baskerville</MenuItem>
-                          <MenuItem value="Lobster">Lobster</MenuItem>
-                          <MenuItem value="Lora">Lora</MenuItem>
-                          <MenuItem value="Merriweather">Merriweather</MenuItem>
-                          <MenuItem value="Montserrat">Montserrat</MenuItem>
-                          <MenuItem value="Mukta">Mukta</MenuItem>
-                          <MenuItem value="Nanum Gothic">Nanum Gothic</MenuItem>
-                          <MenuItem value="Noto Sans">Noto Sans</MenuItem>
-                          <MenuItem value="Noto Serif">Noto Serif</MenuItem>
-                          <MenuItem value="Nunito">Nunito</MenuItem>
-                          <MenuItem value="Open Sans">Open Sans</MenuItem>
-                          <MenuItem value="Oswald">Oswald</MenuItem>
-                          <MenuItem value="Overpass">Overpass</MenuItem>
-                          <MenuItem value="Oxygen">Oxygen</MenuItem>
-                          <MenuItem value="Pacifico">Pacifico</MenuItem>
-                          <MenuItem value="Playfair Display">Playfair Display</MenuItem>
-                          <MenuItem value="Poppins">Poppins</MenuItem>
-                          <MenuItem value="PT Sans">PT Sans</MenuItem>
-                          <MenuItem value="PT Serif">PT Serif</MenuItem>
-                          <MenuItem value="Quicksand">Quicksand</MenuItem>
-                          <MenuItem value="Raleway">Raleway</MenuItem>
-                          <MenuItem value="Roboto">Roboto</MenuItem>
-                          <MenuItem value="Roboto Condensed">Roboto Condensed</MenuItem>
-                          <MenuItem value="Roboto Mono">Roboto Mono</MenuItem>
-                          <MenuItem value="Roboto Slab">Roboto Slab</MenuItem>
-                          <MenuItem value="Rubik">Rubik</MenuItem>
-                          <MenuItem value="Source Code Pro">Source Code Pro</MenuItem>
-                          <MenuItem value="Source Sans Pro">Source Sans Pro</MenuItem>
-                          <MenuItem value="Space Mono">Space Mono</MenuItem>
-                          <MenuItem value="Spectral">Spectral</MenuItem>
-                          <MenuItem value="Titillium Web">Titillium Web</MenuItem>
-                          <MenuItem value="Ubuntu">Ubuntu</MenuItem>
-                          <MenuItem value="Work Sans">Work Sans</MenuItem>
-                          <MenuItem value="Yanone Kaffeesatz">Yanone Kaffeesatz</MenuItem>
-                          <MenuItem value="Zilla Slab">Zilla Slab</MenuItem>
+                          {FONT_FAMILIES.map((font) => (
+                            <MenuItem
+                              key={font}
+                              value={font}
+                              onMouseEnter={() => loadFont(font)}
+                              sx={{ fontFamily: `'${font}', sans-serif` }}
+                            >
+                              {font}
+                            </MenuItem>
+                          ))}
                         </Select>
                       </FormControl>
 

@@ -123,9 +123,8 @@ class CertificateController {
       const template = await CertificateService.getTemplateById(parseInt(templateId), request.user.userId);
 
       // Fetch participant directly (must belong to the same event)
-      const { Participant } = require('../models');
       const participant = await Participant.findOne({
-        where: { id: participantId, eventId: template.eventId }
+        where: { id: parseInt(participantId), eventId: template.eventId }
       });
 
       if (!participant) {
@@ -209,6 +208,68 @@ class CertificateController {
       reply.status(500).send({
         error: error.message
       });
+    }
+  }
+
+  async downloadIndividualCertificatePDF(request, reply) {
+    try {
+      const { templateId, participantId } = request.params;
+
+      console.log(`Individual PDF download request for participant ${participantId} with template ${templateId}`);
+
+      // Get template and verify ownership
+      const template = await CertificateService.getTemplateById(parseInt(templateId), request.user.userId);
+      if (!template) {
+        console.log('Template not found');
+        return reply.status(404).send({
+          error: 'Template not found'
+        });
+      }
+
+      // Get the participant and verify they belong to the template's event
+      const participant = await Participant.findOne({
+        where: {
+          id: participantId,
+          eventId: template.eventId
+        }
+      });
+
+      if (!participant) {
+        console.log('Participant not found or not part of this event');
+        return reply.status(404).send({
+          error: 'Participant not found or not part of this event'
+        });
+      }
+
+      console.log(`Generating PDF for participant ${participantId}`);
+
+      // Use PuppeteerPDFService to generate PDF for a single participant
+      const PuppeteerPDFService = require('../services/PuppeteerPDFService');
+      const pdfBuffer = await PuppeteerPDFService.createBulkPDFFromTemplate(template, [participant]);
+
+      // Set headers for PDF download
+      const participantName = participant.data?.name || participant.data?.nama || 'participant';
+      const sanitizedName = participantName.replace(/[^\w\s-]/g, '_');
+      const pdfFileName = `sertifikat_${sanitizedName}_${participantId}.pdf`;
+      
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${pdfFileName}"`);
+      reply.header('Content-Length', pdfBuffer.length);
+      reply.header('Access-Control-Allow-Origin', '*');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+
+      console.log(`Sending individual PDF file: ${pdfFileName} (${pdfBuffer.length} bytes)`);
+
+      // Send the PDF buffer
+      reply.send(pdfBuffer);
+    } catch (error) {
+      console.error('Individual PDF download error:', error);
+      if (!reply.sent) {
+        reply.status(500).send({
+          error: error.message
+        });
+      }
     }
   }
 

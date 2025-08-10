@@ -12,9 +12,13 @@ async function certificateRoutes(fastify, options) {
   fastify.put('/templates/:id', CertificateController.updateTemplate);
   fastify.delete('/templates/:id', CertificateController.deleteTemplate);
 
-  // Generate and download individual certificate
+  // Generate and download individual certificate (legacy - will be deprecated)
   fastify.post('/templates/:templateId/participants/:participantId/generate-download',
     CertificateController.generateAndDownloadCertificate);
+    
+  // New endpoint for individual certificate download using bulk generation approach
+  fastify.post('/templates/:templateId/participants/:participantId/download-pdf',
+    CertificateController.downloadIndividualCertificatePDF);
 
   // File upload and download
   fastify.post('/upload-background', CertificateController.uploadBackgroundImage);

@@ -2,6 +2,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
+const https = require('https');
 // Removed unused locale import
 
 class PuppeteerPDFService {
@@ -78,9 +79,12 @@ class PuppeteerPDFService {
       page.on('request', (request) => {
         const url = request.url();
 
-        // Handle local upload files
-        if (url.startsWith(`http://localhost:${process.env.PORT}/uploads/`)) {
-          const fileName = url.replace(`http://localhost:${process.env.PORT}/uploads/`, '');
+        // Handle local upload files (support both legacy /uploads and current /api/uploads)
+        const port = process.env.PORT || 3000;
+        if (url.startsWith(`http://localhost:${port}/uploads/`) || url.startsWith(`http://localhost:${port}/api/uploads/`)) {
+          const fileName = url.startsWith(`http://localhost:${port}/api/uploads/`)
+            ? url.replace(`http://localhost:${port}/api/uploads/`, '')
+            : url.replace(`http://localhost:${port}/uploads/`, '');
           const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
 
           try {
@@ -129,12 +133,15 @@ class PuppeteerPDFService {
         console.log('Fonts used in template:', Array.from(fontsUsed));
       }
 
-      // Create HTML content for all certificates
-      const htmlContent = this.generateBulkHTMLFromTemplate(template, participants);
+      // Prepare local fonts CSS (download Google Fonts to local server)
+      const localFontsCSS = await this.prepareLocalFonts(template);
 
-      // Set content and wait for it to load
+      // Create HTML content for all certificates
+      const htmlContent = this.generateBulkHTMLFromTemplate(template, participants, localFontsCSS);
+
+      // Set content and wait for minimal readiness; fonts handled below
       await page.setContent(htmlContent, {
-        waitUntil: 'domcontentloaded', // Faster; we manually manage font loading below
+        waitUntil: 'domcontentloaded',
         timeout: 45000
       });
 
@@ -147,7 +154,7 @@ class PuppeteerPDFService {
 
       // Explicitly load all fonts before proceeding
       await page.evaluate(() => {
-        const MAX_WAIT = 10000; // Increased to 10s cap
+        const MAX_WAIT = 6000; // cap to keep flow fast; fonts use font-display:swap
         const start = Date.now();
         return new Promise((resolve) => {
           if (!document.fonts) return setTimeout(resolve, 1500);
@@ -156,14 +163,14 @@ class PuppeteerPDFService {
             if (!pending.length || Date.now() - start > MAX_WAIT) {
               requestAnimationFrame(() => resolve());
             } else {
-              setTimeout(check, 500); // Increased check interval
+              setTimeout(check, 300);
             }
           };
           if (document.fonts.status === 'loaded') {
             return resolve();
           }
           document.fonts.ready.finally(check);
-          setTimeout(check, 500);
+          setTimeout(check, 300);
         });
       });
 
@@ -208,7 +215,7 @@ class PuppeteerPDFService {
     }
   }
 
-  generateBulkHTMLFromTemplate(template, participants) {
+  generateBulkHTMLFromTemplate(template, participants, localFontsCSS = '') {
     // Collect all unique font families used in the template
     const fontFamilies = new Set();
     if (template.design && template.design.objects) {
@@ -225,14 +232,15 @@ class PuppeteerPDFService {
 
     // Generate Google Fonts CSS import
     let googleFontsImport = '';
-    const googleFonts = [];
+    let googleFonts = [];
 
     // System/Web-safe fonts that don't need remote fetching
     const systemFonts = [
       'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
       'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
       'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
-      'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium'
+      'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium',
+      'Brush Script MT'
     ];
     // Dynamic Google fonts list (any non-system font)
     const dynamicGoogleFonts = new Set();
@@ -257,70 +265,26 @@ class PuppeteerPDFService {
       'Pacifico': "'Pacifico', cursive"
     };
 
-    // Process each font family used in the template
-    for (const fontFamily of fontFamilies) {
-      const cleanFontFamily = fontFamily.replace(/['"]/g, '').trim();
-
-      if (!cleanFontFamily) continue;
-
-      // Check if this is a Google Font
-      if (!systemFonts.includes(cleanFontFamily)) {
-        dynamicGoogleFonts.add(cleanFontFamily);
-        let googleFontName = cleanFontFamily.replace(/\s+/g, '+');
-
-        // Collect all font weights and styles used for this font
-        const weights = [];
-        const styles = [];
-        if (template.design && template.design.objects) {
-          for (const element of template.design.objects) {
-            if (element.type === 'text' && element.fontFamily === cleanFontFamily) {
-              // Handle font weight
-              if (element.fontWeight === 'bold' || element.fontWeight === '700') {
-                weights.push('700');
-              } else if (element.fontWeight === '600') {
-                weights.push('600');
-              } else if (element.fontWeight === '500') {
-                weights.push('500');
-              } else if (element.fontWeight === '300') {
-                weights.push('300');
-              } else {
-                weights.push('400');
-              }
-
-              // Handle font style
-              if (element.fontStyle === 'italic') {
-                styles.push('italic');
-              }
-            }
-          }
-        }
-
-        // Get unique weights and styles
-        const uniqueWeights = [...new Set(weights)].sort();
-        const hasItalic = styles.includes('italic');
-
-        // Build weight string with italic support
-        let weightString = uniqueWeights.length > 0 ? uniqueWeights.join(';') : '400';
-        if (hasItalic) {
-          // Add italic versions of each weight
-          const italicWeights = uniqueWeights.map(w => `1,${w}`);
-          weightString = `0,${weightString};${italicWeights.join(';')}`;
-        } else {
-          weightString = `0,${weightString}`;
-        }
-
-        googleFonts.push(`${googleFontName}:ital,wght@${weightString}`);
-        console.log(`Added Google Font: ${googleFontName} with weights: ${weightString}`);
-      } else {
-        console.log(`Skipping system font: ${cleanFontFamily}`);
-      }
-    }
+    // Use unified builder for Google Fonts specs (prevents invalid css2 queries)
+    const { googleFonts: builtFonts } = this._buildGoogleFontsQuery(template);
+    googleFonts = [...builtFonts];
 
     // Add Google Fonts import to HTML
     if (googleFonts.length > 0) {
       const fontsQuery = googleFonts.join('&family=');
       googleFontsImport = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
       console.log(`Google Fonts import URL: https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`);
+    }
+
+    // Preload background image if exists to accelerate first paint
+    let backgroundPreloadLink = '';
+    if (template.design && template.design.background) {
+      let preloadUrl = template.design.background;
+      if (preloadUrl.startsWith('/uploads/')) {
+        const port = process.env.PORT || 3000;
+        preloadUrl = `http://localhost:${port}/api${preloadUrl}`;
+      }
+      backgroundPreloadLink = `<link rel="preload" as="image" href="${preloadUrl}">`;
     }
 
     // Start building HTML
@@ -330,6 +294,10 @@ class PuppeteerPDFService {
     <head>
       <meta charset="UTF-8">
       ${googleFontsImport}
+      ${backgroundPreloadLink}
+      <style>
+      ${localFontsCSS}
+      </style>
       <style>
         @page {
           size: ${template.width}px ${template.height}px;
@@ -375,8 +343,10 @@ class PuppeteerPDFService {
       // Handle local background images
       let backgroundUrl = template.design.background;
       if (backgroundUrl.startsWith('/uploads/')) {
-        // Convert to absolute path for Puppeteer
-        backgroundUrl = `http://localhost:${process.env.PORT}${backgroundUrl}`;
+        // Convert to absolute path for Puppeteer with correct API prefix
+        const port = process.env.PORT || 3000;
+        // Ensure we hit the Fastify static route: /api/uploads/
+        backgroundUrl = `http://localhost:${port}/api${backgroundUrl}`; // becomes /api/uploads/...
       }
 
       html += `
@@ -515,10 +485,14 @@ class PuppeteerPDFService {
 
       page.on('request', (request) => {
         const url = request.url();
+        const port = process.env.PORT || 3000;
 
-        // Handle local upload files
-        if (url.startsWith(`http://localhost:${process.env.PORT}/uploads/`)) {
-          const fileName = url.replace(`http://localhost:${process.env.PORT}/uploads/`, '');
+        // Handle local upload files (support both legacy /uploads and current /api/uploads)
+        if (url.startsWith(`http://localhost:${port}/uploads/`) || 
+            url.startsWith(`http://localhost:${port}/api/uploads/`)) {
+          const fileName = url.startsWith(`http://localhost:${port}/api/uploads/`)
+            ? url.replace(`http://localhost:${port}/api/uploads/`, '')
+            : url.replace(`http://localhost:${port}/uploads/`, '');
           const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
 
           try {
@@ -562,8 +536,11 @@ class PuppeteerPDFService {
         console.log('Fonts used in template:', Array.from(fontsUsed));
       }
 
+      // Prepare local fonts CSS (download Google Fonts to local server)
+      const localFontsCSS = await this.prepareLocalFonts(template);
+
       // Create HTML content for the certificate
-      const htmlContent = this.generateHTMLFromTemplate(template, participant);
+      const htmlContent = this.generateHTMLFromTemplate(template, participant, localFontsCSS);
 
       // Set content and wait for it to load
       await page.setContent(htmlContent, {
@@ -696,8 +673,16 @@ class PuppeteerPDFService {
 
       console.log('Font verification results:', fontVerification);
 
-      // If fonts are not loaded properly, try to force a reload
-      if (fontVerification.some(result => !result.isFontLoaded || !result.isFontApplied)) {
+      // If fonts are not loaded properly (excluding system fonts), try to force a reload
+      const systemFonts = [
+        'Arial','Helvetica','Times New Roman','Georgia','Courier New',
+        'Verdana','Tahoma','Trebuchet MS','Segoe UI','Calibri','Cambria',
+        'Garamond','Lucida Console','Monaco','Comic Sans MS','Impact',
+        'Palatino','Bookman','Avant Garde','Century Gothic','Franklin Gothic Medium',
+        'Brush Script MT'
+      ];
+      const needReload = fontVerification.some(result => (!result.isFontLoaded || !result.isFontApplied) && !systemFonts.includes(result.firstFont));
+      if (needReload) {
         console.log('Some fonts failed to load or apply, attempting to force reload...');
         await page.evaluate(() => {
           // Force a style recalculation
@@ -740,7 +725,33 @@ class PuppeteerPDFService {
     }
   }
 
-  generateHTMLFromTemplate(template, participant) {
+  generateHTMLFromTemplate(template, participant, localFontsCSS = '') {
+    // Define system fonts and CSS font-family mapping (keep in sync with bulk generator)
+    const systemFonts = [
+      'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
+      'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
+      'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
+      'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium'
+    ];
+    const cssFontFamilyMap = {
+      'Brush Script MT': "'Brush Script MT', cursive",
+      'Times New Roman': "'Times New Roman', Times, serif",
+      'Courier New': "'Courier New', Courier, monospace",
+      'Trebuchet MS': "'Trebuchet MS', sans-serif",
+      'Arial Black': "'Arial Black', Arial, sans-serif",
+      'Comic Sans MS': "'Comic Sans MS', cursive",
+      'Impact': 'Impact, fantasy',
+      'Lucida Console': "'Lucida Console', Monaco, monospace",
+      'Palatino Linotype': "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
+      'Tahoma': 'Tahoma, Geneva, Verdana, sans-serif',
+      'Trebuchet': "'Trebuchet MS', sans-serif",
+      'Verdana': 'Verdana, Geneva, sans-serif',
+      'Georgia': 'Georgia, serif',
+      'Helvetica': 'Helvetica, Arial, sans-serif',
+      'Avant Garde': "'Century Gothic', 'Avant Garde', sans-serif",
+      'Pacifico': "'Pacifico', cursive",
+      'Lobster': "'Lobster', sans-serif"
+    };
     // Collect all unique font families used in the template
     const fontFamilies = new Set();
     if (template.design && template.design.objects) {
@@ -758,37 +769,8 @@ class PuppeteerPDFService {
     // Generate Google Fonts CSS import
     let googleFontsImport = '';
     const googleFonts = [];
-    const fontWeights = new Set();
-
-    // System/Web-safe fonts that don't need remote fetching
-    const systemFonts = [
-      'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
-      'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
-      'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
-      'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium'
-    ];
     // Dynamic Google fonts list
     const dynamicGoogleFonts = new Set();
-
-    // Create a comprehensive mapping for CSS font-family property
-    const cssFontFamilyMap = {
-      'Brush Script MT': "'Brush Script MT', cursive",
-      'Times New Roman': "'Times New Roman', Times, serif",
-      'Courier New': "'Courier New', Courier, monospace",
-      'Trebuchet MS': "'Trebuchet MS', sans-serif",
-      'Arial Black': "'Arial Black', Arial, sans-serif",
-      'Comic Sans MS': "'Comic Sans MS', cursive",
-      'Impact': 'Impact, fantasy',
-      'Lucida Console': "'Lucida Console', Monaco, monospace",
-      'Palatino Linotype': "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
-      'Tahoma': 'Tahoma, Geneva, Verdana, sans-serif',
-      'Trebuchet': "'Trebuchet MS', sans-serif",
-      'Verdana': 'Verdana, Geneva, sans-serif',
-      'Georgia': 'Georgia, serif',
-      'Helvetica': 'Helvetica, Arial, sans-serif',
-      'Avant Garde': "'Century Gothic', 'Avant Garde', sans-serif",
-      'Pacifico': "'Pacifico', cursive"
-    };
 
     // Process each font family used in the template
     for (const fontFamily of fontFamilies) {
@@ -844,7 +826,7 @@ class PuppeteerPDFService {
           weightString = `0,${weightString}`;
         }
 
-        googleFonts.push(`${googleFontName}:ital,wght@${weightString}`);
+        googleFonts.push(`${googleFontName}:wght@${weightString}`);
         console.log(`Added Google Font: ${googleFontName} with weights: ${weightString}`);
       } else {
         console.log(`Skipping system font: ${cleanFontFamily}`);
@@ -865,6 +847,9 @@ class PuppeteerPDFService {
     <head>
       <meta charset="UTF-8">
       ${googleFontsImport}
+      <style>
+      ${localFontsCSS}
+      </style>
       <style>
         @page {
           size: ${template.width}px ${template.height}px;
@@ -890,8 +875,10 @@ class PuppeteerPDFService {
       // Handle local background images
       let backgroundUrl = template.design.background;
       if (backgroundUrl.startsWith('/uploads/')) {
-        // Convert to absolute path for Puppeteer
-        backgroundUrl = `http://localhost:${process.env.PORT}${backgroundUrl}`;
+        // Convert to absolute path for Puppeteer with correct API prefix
+        const port = process.env.PORT || 3000;
+        // Ensure we hit the Fastify static route: /api/uploads/
+        backgroundUrl = `http://localhost:${port}/api${backgroundUrl}`; // becomes /api/uploads/...
       }
 
       html += `
@@ -1025,3 +1012,234 @@ class PuppeteerPDFService {
 }
 
 module.exports = new PuppeteerPDFService();
+
+// --------------- Helper methods for local Google Fonts caching ---------------
+// Add methods on the prototype to keep class layout intact
+PuppeteerPDFService.prototype.prepareLocalFonts = async function(template) {
+  try {
+    const { googleFonts, families } = this._buildGoogleFontsQuery(template);
+    if (!googleFonts.length) return '';
+
+    // Build primary query (may contain weights/ital variants)
+    let fontsQuery = googleFonts.join('&family=');
+    let cssUrl = `https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`;
+    let cssText;
+    try {
+      cssText = await this._fetchText(cssUrl, {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+      });
+    } catch (primaryErr) {
+      // Fallback: request default family without variant axes (avoids 400 for families like 'Indie Flower')
+      const simpleFamilies = families.map(f => f.replace(/\s+/g, '+')).join('&family=');
+      const simpleUrl = `https://fonts.googleapis.com/css2?family=${simpleFamilies}&display=swap`;
+      console.warn('Primary Google Fonts CSS fetch failed, retrying simplified URL:', primaryErr.message);
+      console.log('Retry Google Fonts import URL:', simpleUrl);
+      cssText = await this._fetchText(simpleUrl, {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+      });
+    }
+
+    // Ensure fonts directory exists
+    const fontsRoot = path.join(__dirname, '..', 'fonts');
+    await fs.mkdir(fontsRoot, { recursive: true });
+
+    // Find all font URLs in CSS (woff2 preferred)
+    const urlRegex = /url\(([^)]+)\)\s*format\(['"]woff2['"]\)/g;
+    let match;
+    const replacements = [];
+
+    while ((match = urlRegex.exec(cssText)) !== null) {
+      let fontUrl = match[1].replace(/['"]/g, '');
+      try {
+        // Determine family dir from URL if possible, fallback to 'misc'
+        const urlPath = new URL(fontUrl).pathname; // e.g., /s/roboto/v30/....woff2
+        const parts = urlPath.split('/').filter(Boolean);
+        const familySegment = parts.length >= 2 && parts[1] ? parts[1] : 'misc';
+        const familyDir = this._sanitizeFamilyDir(familySegment);
+        const fileName = path.basename(urlPath);
+        const targetDir = path.join(fontsRoot, familyDir);
+        await fs.mkdir(targetDir, { recursive: true });
+
+        const localPath = path.join(targetDir, fileName);
+        if (!fsSync.existsSync(localPath)) {
+          await this._downloadFile(fontUrl, localPath);
+        }
+        const localUrl = `http://localhost:${process.env.PORT || 3000}/api/fonts/${familyDir}/${fileName}`;
+        replacements.push({ remote: fontUrl, local: localUrl });
+      } catch (e) {
+        console.warn('Failed caching font URL:', fontUrl, e.message);
+      }
+    }
+
+    // Replace remote URLs with local URLs
+    let localCss = cssText;
+    for (const r of replacements) {
+      const pattern = new RegExp(r.remote.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      localCss = localCss.replace(pattern, r.local);
+    }
+
+    // Ensure fast rendering: add font-display: swap to each @font-face if missing
+    try {
+      localCss = localCss.replace(/@font-face\s*{[^}]*}/g, (block) => {
+        if (/font-display\s*:/i.test(block)) return block;
+        return block.replace(/}\s*$/, '  font-display: swap;\n}');
+      });
+    } catch (_) { /* noop */ }
+
+    return localCss;
+  } catch (e) {
+    console.warn('prepareLocalFonts failed, falling back to remote Google Fonts:', e.message);
+    return '';
+  }
+};
+
+PuppeteerPDFService.prototype._buildGoogleFontsQuery = function (template) {
+  const families = new Set();
+  const systemFonts = [
+    'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
+    'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
+    'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
+    'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium',
+    'Brush Script MT', 'System UI', 'sans-serif', 'serif', 'monospace'
+  ];
+
+  // Collect font families
+  if (template.design?.objects) {
+    for (const el of template.design.objects) {
+      if (el.type === 'text' && el.fontFamily) {
+        const fam = el.fontFamily.replace(/['"]/g, '').trim();
+        if (fam && !systemFonts.includes(fam)) {
+          families.add(fam);
+        }
+      }
+    }
+  }
+
+  // If no custom fonts found, return empty
+  if (families.size === 0) {
+    return { googleFonts: [], families: [] };
+  }
+
+  // For each font family, collect all required weights and styles
+  const fontVariants = new Map();
+
+  // Initialize font variants map
+  for (const fam of families) {
+    fontVariants.set(fam, {
+      weights: new Set(),
+      hasItalic: false
+    });
+  }
+
+  // Process all text elements to collect font variants
+  if (template.design?.objects) {
+    for (const el of template.design.objects) {
+      if (el.type === 'text' && el.fontFamily) {
+        const fam = el.fontFamily.replace(/['"]/g, '').trim();
+        if (!families.has(fam)) continue;
+
+        const variant = fontVariants.get(fam);
+
+        // Determine weight (default to 400 if not specified)
+        let weight = '400';
+        if (el.fontWeight === 'bold' || el.fontWeight === '700') weight = '700';
+        else if (el.fontWeight === '600') weight = '600';
+        else if (el.fontWeight === '500') weight = '500';
+        else if (el.fontWeight === '300') weight = '300';
+
+        variant.weights.add(weight);
+
+        // Check for italic
+        if (el.fontStyle === 'italic') {
+          variant.hasItalic = true;
+        }
+      }
+    }
+  }
+
+  // Build Google Fonts API query
+  const googleFonts = [];
+
+  for (const [fontName, variant] of fontVariants) {
+    const weights = Array.from(variant.weights);
+
+    // If no specific weights found, use a default
+    if (weights.length === 0) {
+      weights.push('400');
+    }
+
+    // Sort weights for consistent URL generation
+    weights.sort();
+
+    // Build the font specifier for Google Fonts API
+    const googleName = fontName.replace(/\s+/g, '+');
+    let fontSpec = googleName;
+
+    // Use a simpler format without :ital,wght@
+    const variants = [];
+
+    // Add regular variants
+    variants.push(weights.join(','));
+
+    // Add italic variants if needed
+    if (variant.hasItalic) {
+      variants.push(weights.map(w => `${w}i`).join(','));
+    }
+
+    if (variants.length > 0) {
+      fontSpec += `:${variants.join(',')}`;
+    }
+
+    googleFonts.push(fontSpec);
+  }
+
+  return {
+    googleFonts,
+    families: Array.from(families)
+  };
+};
+
+PuppeteerPDFService.prototype._fetchText = function(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers }, res => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        // follow redirect
+        return resolve(this._fetchText(res.headers.location, headers));
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
+      }
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+  });
+};
+
+PuppeteerPDFService.prototype._downloadFile = function(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const file = fsSync.createWriteStream(destPath);
+    https.get(url, res => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        // follow redirect
+        https.get(res.headers.location, r2 => {
+          if (r2.statusCode !== 200) return reject(new Error(`HTTP ${r2.statusCode} downloading ${url}`));
+          r2.pipe(file);
+          file.on('finish', () => file.close(resolve));
+          r2.on('error', reject);
+        }).on('error', reject);
+        return;
+      }
+      if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode} downloading ${url}`));
+      res.pipe(file);
+      file.on('finish', () => file.close(resolve));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+};
+
+PuppeteerPDFService.prototype._sanitizeFamilyDir = function(segment) {
+  return segment.toLowerCase().replace(/[^a-z0-9-_]/g, '_');
+};

@@ -311,7 +311,8 @@ class CertificateService {
       // Use Puppeteer for better font support
       return await puppeteerPDFService.createPDFFromTemplate(template, participant);
     } catch (error) {
-      console.log('Puppeteer failed:', error);
+      console.error('Puppeteer failed:', error);
+      throw error; // propagate to controller
     }
   }
 

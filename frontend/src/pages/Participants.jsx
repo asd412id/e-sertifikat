@@ -409,7 +409,7 @@ const Participants = () => {
       toast.success(`Berhasil mengunduh sertifikat untuk ${participantName || 'peserta'}`);
 
       // Refresh participants data to update certificate status
-      await loadParticipants();
+      await fetchParticipants(pagination.currentPage, searchTerm);
     } catch (error) {
       console.error('Individual certificate generation and download error:', error);
       const errorMessage = error.response?.data?.error || error.message || 'Gagal mengunduh sertifikat';

@@ -189,22 +189,22 @@ export const certificateService = {
     }
   },
 
-  // Generate and download individual certificate
+  // Generate and download individual certificate using the bulk PDF generation approach
   generateAndDownloadCertificate: async (templateId, participantId) => {
     try {
-      console.log('Requesting certificate generation and download for participant:', participantId, 'template:', templateId);
+      console.log('Requesting individual certificate PDF download for participant:', participantId, 'template:', templateId);
 
-      const response = await api.post(`/certificates/templates/${templateId}/participants/${participantId}/generate-download`, {}, {
+      const response = await api.post(`/certificates/templates/${templateId}/participants/${participantId}/download-pdf`, {}, {
         responseType: 'blob',
-        timeout: 120000 // 2 minute timeout for individual generation
+        timeout: 300000 // 5 minute timeout for generation
       });
 
-      console.log('Certificate generation and download response received, size:', response.data.size, 'type:', response.data.type);
+      console.log('Individual certificate PDF download response received, size:', response.data.size, 'type:', response.data.type);
       console.log('Response headers:', response.headers);
 
       // Check if response is actually a PDF blob
       if (response.data && response.data.size > 0) {
-        // Verify it's a PDF file by checking content type or size
+        // Verify it's a PDF file by checking content type
         if (response.data.type === 'application/pdf' || response.headers['content-type'] === 'application/pdf') {
           return response.data;
         } else {
@@ -215,7 +215,7 @@ export const certificateService = {
         throw new Error('File sertifikat kosong atau tidak valid');
       }
     } catch (error) {
-      console.error('Individual certificate generation and download service error:', error);
+      console.error('Individual certificate PDF download service error:', error);
 
       if (error.response) {
         console.log('Error response status:', error.response.status);
@@ -223,18 +223,22 @@ export const certificateService = {
 
         if (error.response.data instanceof Blob) {
           // Try to parse error from blob
-          const text = await error.response.data.text();
           try {
+            const text = await error.response.data.text();
             const errorData = JSON.parse(text);
             throw new Error(errorData.error || 'Server error');
-          } catch {
-            throw new Error('Server returned an error');
+          } catch (e) {
+            console.error('Error parsing error response:', e);
+            throw new Error('Terjadi kesalahan saat memproses sertifikat');
           }
+        } else if (error.response.data && typeof error.response.data === 'string') {
+          throw new Error(error.response.data);
+        } else if (error.response.data && error.response.data.error) {
+          throw new Error(error.response.data.error);
         }
       }
 
       throw error;
     }
   },
-
 };
