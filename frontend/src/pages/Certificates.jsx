@@ -52,16 +52,17 @@ const Certificates = () => {
   // Used to force re-render after font load
   const [, setFontLoadedTick] = useState(0);
 
-  // Helper: load font using webfontloader
+  // Shared list of web-safe fonts that don't need remote loading
+  const WEB_SAFE_FONTS = useRef([
+    'Arial', 'Times New Roman', 'Helvetica', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS',
+    'Segoe UI', 'Calibri', 'Cambria', 'Garamond', 'Courier New', 'Lucida Console', 'Monaco',
+    'Comic Sans MS', 'Impact', 'Palatino', 'Bookman', 'Avant Garde'
+  ]).current;
+
+  // Helper: load a single font using webfontloader
   const loadFont = (fontFamily) => {
     return new Promise((resolve) => {
-      // List of web safe fonts that don't need loading
-      const webSafeFonts = [
-        'Arial', 'Times New Roman', 'Helvetica', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS',
-        'Segoe UI', 'Calibri', 'Cambria', 'Garamond', 'Courier New', 'Lucida Console', 'Monaco',
-        'Comic Sans MS', 'Impact', 'Palatino', 'Bookman', 'Avant Garde'
-      ];
-      if (webSafeFonts.includes(fontFamily)) {
+      if (WEB_SAFE_FONTS.includes(fontFamily)) {
         resolve();
         return;
       }
@@ -71,6 +72,21 @@ const Certificates = () => {
         inactive: resolve
       });
     });
+  };
+
+  // Preload all dropdown fonts once to render styles immediately on open
+  const fontsPreloadedRef = useRef(false);
+  const preloadDropdownFonts = () => {
+    if (fontsPreloadedRef.current) return;
+    try {
+      const loadable = FONT_FAMILIES.filter(f => !WEB_SAFE_FONTS.includes(f));
+      if (loadable.length === 0) return;
+      WebFont.load({
+        google: { families: loadable },
+        active: () => { fontsPreloadedRef.current = true; setFontLoadedTick(t => t + 1); },
+        inactive: () => { fontsPreloadedRef.current = true; setFontLoadedTick(t => t + 1); }
+      });
+    } catch (_) { /* noop */ }
   };
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -874,6 +890,7 @@ const Certificates = () => {
                         <InputLabel>Font Family</InputLabel>
                         <Select
                           value={textProperties.fontFamily}
+                          onOpen={preloadDropdownFonts}
                           onChange={async (e) => {
                             const font = e.target.value;
                             await handleUpdateTextProperties('fontFamily', font);
