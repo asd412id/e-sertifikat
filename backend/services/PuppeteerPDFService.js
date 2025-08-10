@@ -460,6 +460,12 @@ class PuppeteerPDFService {
             styles.push('overflow: visible');
             styles.push('white-space: pre');
 
+            // Apply rotation to text elements
+            if (typeof element.rotation === 'number' && element.rotation !== 0) {
+              styles.push(`transform: rotate(${element.rotation}deg)`);
+              styles.push('transform-origin: top left');
+            }
+
             // Apply text shadow to text elements
             if (element.shadowColor || element.shadowBlur || element.shadowOffsetX || element.shadowOffsetY || typeof element.shadowOpacity === 'number') {
               const sx = element.shadowOffsetX || 0;
