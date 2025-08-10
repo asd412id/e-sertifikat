@@ -371,15 +371,13 @@ const Participants = () => {
     setAnchorEl(null);
   };
 
-  const handleGenerateAndDownloadCertificate = async (participantId, participantName) => {
-    if (!selectedTemplate) {
-      // Store the participant info for later use
-      setCurrentParticipant({ id: participantId, name: participantName });
-      setTemplateDialog(true);
-      await loadTemplates();
-      return;
-    }
+  const openIndividualDownloadDialog = async (participantId, participantName) => {
+    setCurrentParticipant({ id: participantId, name: participantName });
+    await loadTemplates();
+    setTemplateDialog(true);
+  };
 
+  const handleGenerateAndDownloadCertificate = async (participantId, participantName) => {
     try {
       setDownloading(participantId);
 
@@ -584,7 +582,7 @@ const Participants = () => {
                             <Tooltip title={downloading === participant.id ? "Mengunduh..." : "Unduh Sertifikat (Generate On-Demand)"}>
                               <IconButton
                                 size="small"
-                                onClick={() => handleGenerateAndDownloadCertificate(
+                                onClick={() => openIndividualDownloadDialog(
                                   participant.id,
                                   participant.data?.nama || participant.data?.name || `Peserta ${participant.id}`
                                 )}
@@ -781,8 +779,6 @@ const Participants = () => {
               <Button
                 onClick={() => {
                   handleGenerateAndDownloadCertificate(currentParticipant.id, currentParticipant.name);
-                  setTemplateDialog(false);
-                  setCurrentParticipant(null);
                 }}
                 variant="contained"
                 disabled={!selectedTemplate || downloading === currentParticipant.id}
