@@ -11,6 +11,13 @@ class PuppeteerPDFService {
     this.initializationPromise = null; // To prevent multiple browser initializations
   }
 
+  /**
+   * Generate a PDF buffer for MANY participants using a single HTML render path.
+   * Frontend controllers should prefer this method for bulk; single calls route via createPDFFromTemplate().
+   * @param {object} template - certificate template including design.
+   * @param {Array<object>} participants - list of participant records ({ data: {...} }).
+   * @returns {Promise<Buffer>} PDF buffer.
+   */
   async initialize() {
     // If initialization is already in progress, wait for it to complete
     if (this.initializationPromise) {
@@ -61,7 +68,11 @@ class PuppeteerPDFService {
     }
   }
 
-  async createBulkPDFFromTemplate(template, participants) {
+  /**
+   * Single unified PDF generator for both single and bulk.
+   * Accepts a participant object or an array of participants.
+   */
+  async createPDF(template, participants) {
     let page = null;
     try {
       await this.initialize();
@@ -112,7 +123,6 @@ class PuppeteerPDFService {
               request.continue();
             }
           } catch (error) {
-            console.error('Error reading file:', error);
             request.continue();
           }
         } else {
@@ -120,24 +130,13 @@ class PuppeteerPDFService {
         }
       });
 
-      console.log(`Starting bulk PDF generation for ${participants.length} participants`);
-
-      // Log font information for debugging
-      if (template.design && template.design.objects) {
-        const fontsUsed = new Set();
-        template.design.objects.forEach(element => {
-          if (element.type === 'text' && element.fontFamily) {
-            fontsUsed.add(element.fontFamily);
-          }
-        });
-        console.log('Fonts used in template:', Array.from(fontsUsed));
-      }
+      const list = Array.isArray(participants) ? participants : [participants];
 
       // Prepare local fonts CSS (download Google Fonts to local server)
       const localFontsCSS = await this.prepareLocalFonts(template);
 
       // Create HTML content for all certificates
-      const htmlContent = this.generateBulkHTMLFromTemplate(template, participants, localFontsCSS);
+      const htmlContent = this.generateHTMLFromTemplate(template, list, localFontsCSS);
 
       // Set content and wait for minimal readiness; fonts handled below
       await page.setContent(htmlContent, {
@@ -179,8 +178,6 @@ class PuppeteerPDFService {
         document.body.offsetHeight;
       });
 
-      console.log('Generating bulk PDF...');
-
       // Generate PDF with optimized settings for bulk
       const pdfBuffer = await page.pdf({
         width: `${template.width}px`,
@@ -198,10 +195,8 @@ class PuppeteerPDFService {
         displayHeaderFooter: false
       });
 
-      console.log(`Bulk PDF generated successfully for ${participants.length} participants`);
       return pdfBuffer;
     } catch (error) {
-      console.error('Error generating bulk PDF:', error);
       throw error;
     } finally {
       // Always close the page to free up resources
@@ -209,13 +204,20 @@ class PuppeteerPDFService {
         try {
           await page.close();
         } catch (error) {
-          console.error('Error closing page:', error);
         }
       }
     }
   }
 
-  generateBulkHTMLFromTemplate(template, participants, localFontsCSS = '') {
+  /**
+   * Build the complete printable HTML for the given template/participants.
+   * This HTML is also dumped to disk for debugging by the caller.
+   * @param {object} template
+   * @param {Array<object>} participants
+   * @param {string} localFontsCSS
+   * @returns {string} HTML string
+   */
+  generateHTMLFromTemplate(template, participants, localFontsCSS = '') {
     // Collect all unique font families used in the template
     const fontFamilies = new Set();
     if (template.design && template.design.objects) {
@@ -273,7 +275,6 @@ class PuppeteerPDFService {
     if (googleFonts.length > 0) {
       const fontsQuery = googleFonts.join('&family=');
       googleFontsImport = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
-      console.log(`Google Fonts import URL: https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`);
     }
 
     // Preload background image if exists to accelerate first paint
@@ -378,7 +379,9 @@ class PuppeteerPDFService {
 
             // Replace dynamic placeholders with participant data
             if (text.includes('{')) {
-              text = this.replacePlaceholders(text, participant.data);
+              // Ensure participant.data exists and is an object
+              const participantData = (participant && participant.data) || {};
+              text = this.replacePlaceholders(text, participantData);
             }
 
             // Create text element styles
@@ -419,6 +422,12 @@ class PuppeteerPDFService {
             styles.push(`top: ${baseY}px`);
             styles.push(`width: ${width}px`);
             let height = (element.fontSize ? element.fontSize * 1.3 : 32);
+            
+            // Handle shadow offset compensation for bulk generation
+            if (element.shadowOffsetY && element.shadowOffsetY < 0) {
+              // Adjust top position when shadow is above the text
+              styles.push(`top: ${baseY + element.shadowOffsetY}px`);
+            }
             styles.push(`height: ${height}px`);
 
             // Text alignment
@@ -451,7 +460,81 @@ class PuppeteerPDFService {
             styles.push('overflow: visible');
             styles.push('white-space: pre');
 
+            // Apply text shadow to text elements
+            if (element.shadowColor || element.shadowBlur || element.shadowOffsetX || element.shadowOffsetY || typeof element.shadowOpacity === 'number') {
+              const sx = element.shadowOffsetX || 0;
+              const sy = element.shadowOffsetY || 0;
+              const blur = element.shadowBlur || 0;
+              const baseCol = element.shadowColor || 'rgb(0,0,0)';
+              const opacity = typeof element.shadowOpacity === 'number' ? Math.max(0, Math.min(1, element.shadowOpacity)) : 1;
+              
+              // Convert color to RGBA with opacity
+              const toRgba = (c, a) => {
+                try {
+                  if (!c) return `rgba(0,0,0,${a})`;
+                  const cc = c.trim();
+                  if (cc.startsWith('rgba(')) return cc;
+                  if (cc.startsWith('rgb(')) return cc.replace('rgb(', 'rgba(').replace(')', `, ${a})`);
+                  if (cc.startsWith('#')) {
+                    const hex = cc.slice(1);
+                    const norm = hex.length === 3 ? hex.split('').map(h => h + h).join('') : hex;
+                    const r = parseInt(norm.substring(0,2), 16) || 0;
+                    const g = parseInt(norm.substring(2,4), 16) || 0;
+                    const b = parseInt(norm.substring(4,6), 16) || 0;
+                    return `rgba(${r}, ${g}, ${b}, ${a})`;
+                  }
+                  return cc;
+                } catch { return `rgba(0,0,0,${a})`; }
+              };
+              const col = toRgba(baseCol, opacity);
+              styles.push(`text-shadow: ${sx}px ${sy}px ${blur}px ${col}`);
+            }
+
             html += `<div style="${styles.join('; ')}">${text}</div>`;
+          } else if (element.type === 'image' && element.src) {
+            // Resolve image URL (support local uploads)
+            let imgUrl = element.src;
+            if (imgUrl.startsWith('/uploads/')) {
+              const port = process.env.PORT || 3000;
+              imgUrl = `http://localhost:${port}/api${imgUrl}`;
+            }
+
+            const styles = [];
+            styles.push('position: absolute');
+            const baseX = element.x || 0;
+            const baseY = element.y || 0;
+            let w = element.width || 100;
+            let h = element.height || 100;
+            if (w > template.width) w = template.width;
+            if (h > template.height) h = template.height;
+            styles.push(`left: ${baseX}px`);
+            styles.push(`top: ${baseY}px`);
+            styles.push(`width: ${w}px`);
+            styles.push(`height: ${h}px`);
+            if (typeof element.opacity === 'number') styles.push(`opacity: ${element.opacity}`);
+            if (typeof element.rotation === 'number' && element.rotation !== 0) {
+              styles.push(`transform: rotate(${element.rotation}deg)`);
+              styles.push('transform-origin: top left');
+            }
+
+            // Border & radius for image
+            if (element.borderColor && (element.borderWidth || 0) > 0) {
+              styles.push(`border: ${Math.max(0, element.borderWidth)}px solid ${element.borderColor}`);
+            }
+            if (typeof element.borderRadius === 'number') {
+              styles.push(`border-radius: ${Math.max(0, element.borderRadius)}px`);
+            }
+
+            // Box shadow for image
+            if (element.shadowColor || element.shadowBlur || element.shadowOffsetX || element.shadowOffsetY) {
+              const sx = element.shadowOffsetX || 0;
+              const sy = element.shadowOffsetY || 0;
+              const blur = element.shadowBlur || 0;
+              const col = element.shadowColor || 'rgba(0,0,0,0.3)';
+              styles.push(`box-shadow: ${sx}px ${sy}px ${blur}px ${col}`);
+            }
+
+            html += `<img src="${imgUrl}" style="${styles.join('; ')}" />`;
           }
         }
       }
@@ -465,7 +548,6 @@ class PuppeteerPDFService {
     </html>
     `;
 
-    console.log(`Generated bulk HTML with ${participants.length} pages and Google Fonts:`, googleFonts);
     return html;
   }
 
@@ -517,7 +599,6 @@ class PuppeteerPDFService {
               request.continue();
             }
           } catch (error) {
-            console.error('Error reading file:', error);
             request.continue();
           }
         } else {
@@ -525,16 +606,6 @@ class PuppeteerPDFService {
         }
       });
 
-      // Log font information for debugging
-      if (template.design && template.design.objects) {
-        const fontsUsed = new Set();
-        template.design.objects.forEach(element => {
-          if (element.type === 'text' && element.fontFamily) {
-            fontsUsed.add(element.fontFamily);
-          }
-        });
-        console.log('Fonts used in template:', Array.from(fontsUsed));
-      }
 
       // Prepare local fonts CSS (download Google Fonts to local server)
       const localFontsCSS = await this.prepareLocalFonts(template);
@@ -593,85 +664,6 @@ class PuppeteerPDFService {
         return errors;
       });
 
-      if (fontErrors.length > 0) {
-        console.warn('Font loading errors detected:', fontErrors);
-      }
-
-      // Additional check: verify that text elements are using the correct fonts
-      const fontVerification = await page.evaluate(() => {
-        const results = [];
-        const textElements = document.querySelectorAll('div[style*="font-family"]');
-
-        textElements.forEach((element, index) => {
-          const computedStyle = window.getComputedStyle(element);
-          const fontFamily = computedStyle.fontFamily;
-          const fontSize = computedStyle.fontSize;
-
-          // Extract the first font name from the font-family string
-          const firstFont = fontFamily.split(',')[0].replace(/['"]/g, '').trim();
-
-          // Check if the font family is loaded - check against the first font in the fallback list
-          let isFontLoaded = false;
-          if (document.fonts) {
-            isFontLoaded = Array.from(document.fonts).some(font => {
-              // Compare font family names (remove quotes and trim)
-              const fontName = font.family.replace(/['"]/g, '').trim();
-              return fontName === firstFont && font.status === 'loaded';
-            });
-          }
-
-          // Also check if the font is actually being used by comparing the computed font
-          const actualFont = computedStyle.fontFamily;
-          const isFontApplied = actualFont.includes(firstFont);
-
-          // Check if the font is being rendered correctly by measuring text width
-          // This is a more reliable way to check if a font is actually applied
-          const testElement = document.createElement('span');
-          testElement.style.fontFamily = fontFamily;
-          testElement.style.fontSize = fontSize;
-          testElement.style.position = 'absolute';
-          testElement.style.left = '-9999px';
-          testElement.style.visibility = 'hidden';
-          testElement.textContent = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-          document.body.appendChild(testElement);
-
-          const testWidth = testElement.offsetWidth;
-          document.body.removeChild(testElement);
-
-          // Compare with a fallback font
-          const fallbackElement = document.createElement('span');
-          fallbackElement.style.fontFamily = 'Arial, sans-serif';
-          fallbackElement.style.fontSize = fontSize;
-          fallbackElement.style.position = 'absolute';
-          fallbackElement.style.left = '-9999px';
-          fallbackElement.style.visibility = 'hidden';
-          fallbackElement.textContent = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-          document.body.appendChild(fallbackElement);
-
-          const fallbackWidth = fallbackElement.offsetWidth;
-          document.body.removeChild(fallbackElement);
-
-          // If the widths are different by more than 2px, the font is likely being applied
-          const isFontRendering = Math.abs(testWidth - fallbackWidth) > 2;
-
-          results.push({
-            element: index,
-            fontFamily: fontFamily,
-            firstFont: firstFont,
-            fontSize: fontSize,
-            isFontLoaded: isFontLoaded,
-            isFontApplied: isFontApplied,
-            isFontRendering: isFontRendering,
-            testWidth: testWidth,
-            fallbackWidth: fallbackWidth,
-            text: element.textContent.substring(0, 50) + '...'
-          });
-        });
-
-        return results;
-      });
-
-      console.log('Font verification results:', fontVerification);
 
       // If fonts are not loaded properly (excluding system fonts), try to force a reload
       const systemFonts = [
@@ -683,7 +675,6 @@ class PuppeteerPDFService {
       ];
       const needReload = fontVerification.some(result => (!result.isFontLoaded || !result.isFontApplied) && !systemFonts.includes(result.firstFont));
       if (needReload) {
-        console.log('Some fonts failed to load or apply, attempting to force reload...');
         await page.evaluate(() => {
           // Force a style recalculation
           document.body.style.display = 'none';
@@ -711,7 +702,6 @@ class PuppeteerPDFService {
 
       return pdfBuffer;
     } catch (error) {
-      console.error('Error generating PDF:', error);
       throw error;
     } finally {
       // Always close the page to free up resources
@@ -719,292 +709,31 @@ class PuppeteerPDFService {
         try {
           await page.close();
         } catch (error) {
-          console.error('Error closing page:', error);
         }
       }
     }
   }
 
-  generateHTMLFromTemplate(template, participant, localFontsCSS = '') {
-    // Define system fonts and CSS font-family mapping (keep in sync with bulk generator)
-    const systemFonts = [
-      'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
-      'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
-      'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
-      'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium'
-    ];
-    const cssFontFamilyMap = {
-      'Brush Script MT': "'Brush Script MT', cursive",
-      'Times New Roman': "'Times New Roman', Times, serif",
-      'Courier New': "'Courier New', Courier, monospace",
-      'Trebuchet MS': "'Trebuchet MS', sans-serif",
-      'Arial Black': "'Arial Black', Arial, sans-serif",
-      'Comic Sans MS': "'Comic Sans MS', cursive",
-      'Impact': 'Impact, fantasy',
-      'Lucida Console': "'Lucida Console', Monaco, monospace",
-      'Palatino Linotype': "'Palatino Linotype', 'Book Antiqua', Palatino, serif",
-      'Tahoma': 'Tahoma, Geneva, Verdana, sans-serif',
-      'Trebuchet': "'Trebuchet MS', sans-serif",
-      'Verdana': 'Verdana, Geneva, sans-serif',
-      'Georgia': 'Georgia, serif',
-      'Helvetica': 'Helvetica, Arial, sans-serif',
-      'Avant Garde': "'Century Gothic', 'Avant Garde', sans-serif",
-      'Pacifico': "'Pacifico', cursive",
-      'Lobster': "'Lobster', sans-serif"
-    };
-    // Collect all unique font families used in the template
-    const fontFamilies = new Set();
-    if (template.design && template.design.objects) {
-      for (const element of template.design.objects) {
-        if (element.type === 'text' && element.fontFamily) {
-          // Clean up font family name - remove quotes and extra spaces
-          const cleanFontFamily = element.fontFamily.replace(/['"]/g, '').trim();
-          if (cleanFontFamily) {
-            fontFamilies.add(cleanFontFamily);
-          }
-        }
-      }
-    }
-
-    // Generate Google Fonts CSS import
-    let googleFontsImport = '';
-    const googleFonts = [];
-    // Dynamic Google fonts list
-    const dynamicGoogleFonts = new Set();
-
-    // Process each font family used in the template
-    for (const fontFamily of fontFamilies) {
-      // Clean up font family name - remove quotes and extra spaces
-      const cleanFontFamily = fontFamily.replace(/['"]/g, '').trim();
-
-      if (!cleanFontFamily) continue;
-
-      // Check if this is a Google Font
-      if (!systemFonts.includes(cleanFontFamily)) {
-        dynamicGoogleFonts.add(cleanFontFamily);
-        // Convert font name to Google Fonts format
-        let googleFontName = cleanFontFamily.replace(/\s+/g, '+');
-
-        // Collect all font weights used for this font
-        const weights = [];
-        const styles = [];
-        if (template.design && template.design.objects) {
-          for (const element of template.design.objects) {
-            if (element.type === 'text' && element.fontFamily === cleanFontFamily) {
-              // Handle font weight
-              if (element.fontWeight === 'bold' || element.fontWeight === '700') {
-                weights.push('700');
-              } else if (element.fontWeight === '600') {
-                weights.push('600');
-              } else if (element.fontWeight === '500') {
-                weights.push('500');
-              } else if (element.fontWeight === '300') {
-                weights.push('300');
-              } else {
-                weights.push('400');
-              }
-
-              // Handle font style
-              if (element.fontStyle === 'italic') {
-                styles.push('italic');
-              }
-            }
-          }
-        }
-
-        // Get unique weights and styles
-        const uniqueWeights = [...new Set(weights)].sort();
-        const hasItalic = styles.includes('italic');
-
-        // Build weight string with italic support
-        let weightString = uniqueWeights.length > 0 ? uniqueWeights.join(';') : '400';
-        if (hasItalic) {
-          // Add italic versions of each weight
-          const italicWeights = uniqueWeights.map(w => `1,${w}`);
-          weightString = `0,${weightString};${italicWeights.join(';')}`;
-        } else {
-          weightString = `0,${weightString}`;
-        }
-
-        googleFonts.push(`${googleFontName}:wght@${weightString}`);
-        console.log(`Added Google Font: ${googleFontName} with weights: ${weightString}`);
-      } else {
-        console.log(`Skipping system font: ${cleanFontFamily}`);
-      }
-    }
-
-    // Add Google Fonts import to HTML
-    if (googleFonts.length > 0) {
-      const fontsQuery = googleFonts.join('&family=');
-      googleFontsImport = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
-      console.log(`Google Fonts import URL: https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`);
-    }
-
-    // Start building HTML
-    let html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      ${googleFontsImport}
-      <style>
-      ${localFontsCSS}
-      </style>
-      <style>
-        @page {
-          size: ${template.width}px ${template.height}px;
-          margin: 0;
-        }
-        body {
-          margin: 0;
-          padding: 0;
-          width: ${template.width}px;
-          height: ${template.height}px;
-          position: relative;
-          font-family: Arial, sans-serif;
-        }
-        .certificate-container {
-          width: 100%;
-          height: 100%;
-          position: relative;
-        }
-    `;
-
-    // Add background image if it exists
-    if (template.design && template.design.background) {
-      // Handle local background images
-      let backgroundUrl = template.design.background;
-      if (backgroundUrl.startsWith('/uploads/')) {
-        // Convert to absolute path for Puppeteer with correct API prefix
-        const port = process.env.PORT || 3000;
-        // Ensure we hit the Fastify static route: /api/uploads/
-        backgroundUrl = `http://localhost:${port}/api${backgroundUrl}`; // becomes /api/uploads/...
-      }
-
-      html += `
-        .certificate-container {
-          background-image: url('${backgroundUrl}');
-          background-size: cover;
-          background-position: center;
-          background-repeat: no-repeat;
-        }
-      `;
-    }
-
-    html += `
-      </style>
-    </head>
-    <body>
-      <div class="certificate-container">
-    `;
-
-    // Add elements
-    if (template.design && template.design.objects) {
-      for (const element of template.design.objects) {
-        if (element.type === 'text') {
-          let text = element.text || '';
-
-          // Replace dynamic placeholders with participant data
-          if (text.includes('{')) {
-            text = this.replacePlaceholders(text, participant.data);
-          }
-
-          // Create text element styles
-          const styles = [];
-          if (element.fontSize) styles.push(`font-size: ${element.fontSize}px`);
-
-          // Apply font family with fallbacks
-          if (element.fontFamily) {
-            const cleanFontFamily = element.fontFamily.replace(/['"]/g, '').trim();
-
-            // Use the pre-defined CSS font-family mapping first
-            if (cssFontFamilyMap[cleanFontFamily]) {
-              styles.push(`font-family: ${cssFontFamilyMap[cleanFontFamily]}`);
-            } else if (!systemFonts.includes(cleanFontFamily)) {
-              // For Google Fonts, use the exact name with proper quotes and fallbacks
-              styles.push(`font-family: '${cleanFontFamily}', sans-serif`);
-            } else if (systemFonts.includes(cleanFontFamily)) {
-              // For system fonts, use the font name directly with fallbacks
-              styles.push(`font-family: '${cleanFontFamily}', sans-serif`);
-            } else {
-              // For unknown fonts, use the font name directly with fallbacks
-              styles.push(`font-family: '${cleanFontFamily}', sans-serif`);
-            }
-          }
-
-          if (element.fill) styles.push(`color: ${element.fill}`);
-          if (element.fontWeight) styles.push(`font-weight: ${element.fontWeight}`);
-          if (element.fontStyle) styles.push(`font-style: ${element.fontStyle}`);
-          if (element.textDecoration) styles.push(`text-decoration: ${element.textDecoration}`);
-
-          // Position styles - always use the element's x,y coordinates as base
-          styles.push('position: absolute');
-          // Set base position and dimensions
-          let baseX = element.x || 0;
-          let baseY = element.y || 0;
-          let width = element.width || 200;
-          // Clamp width to template width
-          if (width > template.width) width = template.width;
-          styles.push(`left: ${baseX}px`);
-          styles.push(`top: ${baseY}px`);
-          styles.push(`width: ${width}px`);
-          // Set height for vertical alignment (use fontSize * 1.3 for line height)
-          let height = (element.fontSize ? element.fontSize * 1.3 : 32);
-          styles.push(`height: ${height}px`);
-          // Text alignment in bounding box
-          if (element.align) {
-            styles.push(`text-align: ${element.align}`);
-          }
-          // Vertical alignment: only use flex for middle/bottom, not for top
-          if (element.verticalAlign === 'middle' || element.verticalAlign === 'bottom') {
-            styles.push('display: flex');
-            styles.push('flex-direction: column');
-            // Set justify-content for vertical alignment within the bounding box
-            if (element.verticalAlign === 'middle') {
-              styles.push('justify-content: center');
-            } else if (element.verticalAlign === 'bottom') {
-              styles.push('justify-content: flex-end');
-            }
-            // Set align-items for horizontal alignment within the bounding box
-            if (element.align === 'right') {
-              styles.push('align-items: flex-end');
-            } else if (element.align === 'center') {
-              styles.push('align-items: center');
-            } else {
-              styles.push('align-items: flex-start');
-            }
-          } else {
-            // For top alignment, use block layout and set line-height to match font size for perfect top alignment
-            if (element.fontSize) {
-              styles.push(`line-height: 1.35rem`);
-            }
-          }
-          // Prevent text wrapping
-          styles.push('overflow: visible');
-          styles.push('white-space: pre');
-
-          html += `<div style="${styles.join('; ')}">${text}</div>`;
-        }
-      }
-    }
-
-    html += `
-      </div>
-    </body>
-    </html>
-    `;
-
-    console.log('Generated HTML with Google Fonts:', googleFonts);
-    return html;
+  // generateHTMLFromTemplateSingle method for single certificates is now handled by the bulk method
+  // This method is kept for backward compatibility but delegates to the main method
+  generateHTMLFromTemplateSingle(template, participant, localFontsCSS = '') {
+    // Convert single participant to array format and call bulk method
+    const participants = Array.isArray(participant) ? participant : [participant];
+    return this.generateHTMLFromTemplate(template, participants, localFontsCSS);
   }
 
+  /** Replace {placeholders} in text using participant data. */
   replacePlaceholders(text, participantData) {
     let result = text;
 
     // Replace placeholders like {nama}, {instansi}, etc.
-    for (const [key, value] of Object.entries(participantData)) {
+    const data = (participantData && typeof participantData === 'object') ? participantData : {};
+    for (const [key, value] of Object.entries(data)) {
       const placeholder = `{${key}}`;
-      result = result.replace(new RegExp(placeholder, 'g'), value || '');
+      const v = (value ?? '').toString();
+      // Escape the placeholder for regex to handle special characters
+      const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      result = result.replace(new RegExp(escapedPlaceholder, 'g'), v);
     }
 
     return result;
@@ -1032,8 +761,6 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function(template) {
       // Fallback: request default family without variant axes (avoids 400 for families like 'Indie Flower')
       const simpleFamilies = families.map(f => f.replace(/\s+/g, '+')).join('&family=');
       const simpleUrl = `https://fonts.googleapis.com/css2?family=${simpleFamilies}&display=swap`;
-      console.warn('Primary Google Fonts CSS fetch failed, retrying simplified URL:', primaryErr.message);
-      console.log('Retry Google Fonts import URL:', simpleUrl);
       cssText = await this._fetchText(simpleUrl, {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
       });
@@ -1067,7 +794,6 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function(template) {
         const localUrl = `http://localhost:${process.env.PORT || 3000}/api/fonts/${familyDir}/${fileName}`;
         replacements.push({ remote: fontUrl, local: localUrl });
       } catch (e) {
-        console.warn('Failed caching font URL:', fontUrl, e.message);
       }
     }
 
@@ -1088,7 +814,6 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function(template) {
 
     return localCss;
   } catch (e) {
-    console.warn('prepareLocalFonts failed, falling back to remote Google Fonts:', e.message);
     return '';
   }
 };
@@ -1243,3 +968,4 @@ PuppeteerPDFService.prototype._downloadFile = function(url, destPath) {
 PuppeteerPDFService.prototype._sanitizeFamilyDir = function(segment) {
   return segment.toLowerCase().replace(/[^a-z0-9-_]/g, '_');
 };
+

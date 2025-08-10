@@ -154,9 +154,9 @@ class CertificateController {
         }
       }
 
-      // Generate PDF on-the-fly (no persistence) using Puppeteer service directly
+      // Generate PDF on-the-fly (no persistence) using unified method
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
-      const pdfBuffer = await PuppeteerPDFService.createPDFFromTemplate(template, participant);
+      const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
 
       if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer)) {
         return reply.status(500).send({ error: 'Failed to generate PDF' });
@@ -243,9 +243,9 @@ class CertificateController {
 
       console.log(`Generating PDF for participant ${participantId}`);
 
-      // Use PuppeteerPDFService to generate PDF for a single participant
+      // Use unified single/bulk path
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
-      const pdfBuffer = await PuppeteerPDFService.createBulkPDFFromTemplate(template, [participant]);
+      const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
 
       // Set headers for PDF download
       const participantName = participant.data?.name || participant.data?.nama || 'participant';
@@ -317,9 +317,9 @@ class CertificateController {
 
       console.log(`Found ${participants.length} participants for bulk PDF generation`);
 
-      // Use PuppeteerPDFService to generate bulk PDF
+      // Use unified method for both bulk and single
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
-      const pdfBuffer = await PuppeteerPDFService.createBulkPDFFromTemplate(template, participants);
+      const pdfBuffer = await PuppeteerPDFService.createPDF(template, participants);
 
       // Set headers for PDF download
       const pdfFileName = `sertifikat_${event.title?.replace(/[^\w\s-]/g, '') || eventId}.pdf`;

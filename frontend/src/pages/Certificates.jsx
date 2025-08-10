@@ -24,6 +24,8 @@ import {
   Select,
   MenuItem,
   Slider,
+  Checkbox,
+  FormControlLabel,
   Divider,
   Menu,
   Stack,
@@ -42,7 +44,13 @@ import {
   MoreVert,
   GetApp
 } from '@mui/icons-material';
-import { Stage, Layer, Text, Image as KonvaImage, Transformer, Rect } from 'react-konva';
+import {
+  VerticalAlignTop,
+  VerticalAlignBottom,
+  ArrowUpward,
+  ArrowDownward
+} from '@mui/icons-material';
+import { Stage, Layer, Text, Image as KonvaImage, Transformer, Rect, Group } from 'react-konva';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { certificateService, eventService, participantService } from '../services/dataService';
@@ -50,7 +58,13 @@ import toast from 'react-hot-toast';
 
 const Certificates = () => {
   // Used to force re-render after font load
-  const [, setFontLoadedTick] = useState(0);
+  const [fontLoadedTick, setFontLoadedTick] = useState(0);
+  // Debounce map for smoother UI updates (e.g., color pickers)
+  const changeTimers = useRef({});
+  const scheduleUpdate = (key, fn, delay = 80) => {
+    if (changeTimers.current[key]) clearTimeout(changeTimers.current[key]);
+    changeTimers.current[key] = setTimeout(fn, delay);
+  };
 
   // Shared list of web-safe fonts that don't need remote loading
   const WEB_SAFE_FONTS = useRef([
@@ -120,12 +134,18 @@ const Certificates = () => {
 
   // Konva editor state
   const [stageRef, setStageRef] = useState(null);
+  const transformerRef = useRef(null);
+  const shapeRefs = useRef({});
   const [selectedElement, setSelectedElement] = useState(null);
   const [elements, setElements] = useState([]);
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [backgroundImageObj, setBackgroundImageObj] = useState(null);
   const [backgroundImageFile, setBackgroundImageFile] = useState(null);
   const [stageSize, setStageSize] = useState({ width: 842, height: 595 }); // A4 landscape
+
+  // Image cache for element previews
+  const [imageCache, setImageCache] = useState({}); // { [elementId]: HTMLImageElement }
+  const [lockImageRatio, setLockImageRatio] = useState(true);
 
   // Text properties
   const [textProperties, setTextProperties] = useState({
@@ -188,6 +208,61 @@ const Certificates = () => {
       toast.error('Gagal memuat detail acara');
       navigate('/events');
     }
+  };
+
+  // Keep Transformer selection in sync
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    const node = selectedElement ? shapeRefs.current[selectedElement.id] : null;
+    if (node) {
+      tr.nodes([node]);
+      tr.getLayer() && tr.getLayer().batchDraw();
+    } else {
+      tr.nodes([]);
+      tr.getLayer() && tr.getLayer().batchDraw();
+    }
+  }, [selectedElement, elements]);
+
+  // ------- Layer Ordering Handlers -------
+  const reorderElements = (fromIndex, toIndex) => {
+    setElements((prev) => {
+      const arr = [...prev];
+      if (fromIndex < 0 || fromIndex >= arr.length) return prev;
+      if (toIndex < 0) toIndex = 0;
+      if (toIndex >= arr.length) toIndex = arr.length - 1;
+      const [item] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, item);
+      return arr;
+    });
+  };
+
+  const handleBringToFront = () => {
+    if (!selectedElement) return;
+    const idx = elements.findIndex((e) => e.id === selectedElement.id);
+    if (idx === -1) return;
+    reorderElements(idx, elements.length - 1);
+  };
+
+  const handleSendToBack = () => {
+    if (!selectedElement) return;
+    const idx = elements.findIndex((e) => e.id === selectedElement.id);
+    if (idx === -1) return;
+    reorderElements(idx, 0);
+  };
+
+  const handleBringForward = () => {
+    if (!selectedElement) return;
+    const idx = elements.findIndex((e) => e.id === selectedElement.id);
+    if (idx === -1 || idx === elements.length - 1) return;
+    reorderElements(idx, idx + 1);
+  };
+
+  const handleSendBackward = () => {
+    if (!selectedElement) return;
+    const idx = elements.findIndex((e) => e.id === selectedElement.id);
+    if (idx <= 0) return;
+    reorderElements(idx, idx - 1);
   };
 
   const fetchTemplates = async (page = 1) => {
@@ -316,6 +391,38 @@ const Certificates = () => {
     setElements([...elements, newText]);
   };
 
+  // Add static image element (after file selection)
+  const handleAddImageFromFile = async (file) => {
+    if (!file) return;
+
+    // Immediate preview via local URL
+    const localUrl = URL.createObjectURL(file);
+
+    // Create element with temporary src; actual upload happens on save
+    const id = Date.now().toString();
+    const newImageEl = {
+      id,
+      type: 'image',
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 120,
+      opacity: 1,
+      rotation: 0,
+      draggable: true,
+      src: localUrl,
+      _file: file // keep file reference for upload on save
+    };
+
+    // Load into cache for Konva preview
+    const img = new window.Image();
+    img.src = localUrl;
+    img.onload = () => setImageCache(prev => ({ ...prev, [id]: img }));
+    img.onerror = () => toast.error('Gagal memuat pratinjau gambar');
+
+    setElements(prev => [...prev, newImageEl]);
+  };
+
   const handleAddDynamicText = (field) => {
     const newText = {
       id: Date.now().toString(),
@@ -355,11 +462,28 @@ const Certificates = () => {
         verticalAlign: element.verticalAlign || 'top',
         width: element.width || 200
       });
+    } else if (element.type === 'image') {
+      // ensure image cached (for existing templates)
+      if (element.src && !imageCache[element.id]) {
+        let srcUrl = element.src;
+        if (srcUrl.startsWith('/uploads/')) {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+          srcUrl = `${apiBaseUrl}${srcUrl}`;
+        }
+        const img = new window.Image();
+        img.src = srcUrl;
+        img.crossOrigin = 'anonymous';
+        img.onload = () => setImageCache(prev => ({ ...prev, [element.id]: img }));
+        img.onerror = () => console.error('Gagal memuat gambar elemen');
+      }
     }
   };
 
   const handleUpdateElement = (id, updates) => {
-    setElements(elements.map(el => el.id === id ? { ...el, ...updates } : el));
+    // Update elements array
+    setElements(prev => prev.map(el => (el.id === id ? { ...el, ...updates } : el)));
+    // Keep selectedElement in sync so UI controls show latest values
+    setSelectedElement(prev => (prev && prev.id === id ? { ...prev, ...updates } : prev));
   };
 
   const handleDeleteElement = () => {
@@ -400,11 +524,32 @@ const Certificates = () => {
         }
       }
 
+      // Upload any pending image files for image elements
+      const updatedObjects = [];
+      for (const el of elements) {
+        if (el.type === 'image' && el._file) {
+          try {
+            const uploadRes = await certificateService.uploadBackground(el._file);
+            if (uploadRes.success && uploadRes.data?.url) {
+              updatedObjects.push({ ...el, src: uploadRes.data.url, _file: undefined });
+            } else {
+              throw new Error('Gagal mengunggah gambar elemen');
+            }
+          } catch (e) {
+            toast.error(e.message || 'Gagal mengunggah gambar elemen');
+            setSaving(false);
+            return;
+          }
+        } else {
+          updatedObjects.push(el);
+        }
+      }
+
       const templateData = {
         name: templateName,
         eventId: parseInt(eventId),
         design: {
-          objects: elements,
+          objects: updatedObjects,
           background: backgroundUrl
         },
         width: stageSize.width,
@@ -520,6 +665,28 @@ const Certificates = () => {
       };
     }
   }, [backgroundImage]);
+
+  // Load images for existing elements when opening editor
+  useEffect(() => {
+    const loadExistingImages = async () => {
+      for (const el of elements) {
+        if (el.type === 'image' && el.src && !imageCache[el.id]) {
+          let srcUrl = el.src;
+          if (srcUrl.startsWith('/uploads/')) {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+            srcUrl = `${apiBaseUrl}${srcUrl}`;
+          }
+          const img = new window.Image();
+          img.src = srcUrl;
+          img.crossOrigin = 'anonymous';
+          img.onload = () => setImageCache(prev => ({ ...prev, [el.id]: img }));
+          img.onerror = () => console.error('Gagal memuat gambar elemen');
+        }
+      }
+    };
+    if (openDialog) loadExistingImages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDialog]);
 
   const handleBackgroundUpload = (e) => {
     const file = e.target.files[0];
@@ -850,6 +1017,26 @@ const Certificates = () => {
                         onChange={handleBackgroundUpload}
                       />
                     </Button>
+
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<Image />}
+                      component="label"
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      Tambah Gambar
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={(e) => handleAddImageFromFile(e.target.files?.[0])}
+                      />
+                    </Button>
                   </Stack>
 
                   <Divider sx={{ my: 3 }} />
@@ -881,7 +1068,7 @@ const Certificates = () => {
               {tabValue === 1 && selectedElement && (
                 <Box>
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                    Properti Teks
+                    Properti {selectedElement.type === 'image' ? 'Gambar' : 'Teks'}
                   </Typography>
 
                   {selectedElement.type === 'text' && (
@@ -1010,6 +1197,102 @@ const Certificates = () => {
                         />
                       </Box>
 
+                      {/* Advanced text properties */}
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Lanjutan
+                      </Typography>
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Rotasi: {Math.round(selectedElement.rotation || 0)}°
+                        </Typography>
+                        <Slider
+                          value={selectedElement.rotation || 0}
+                          onChange={(e, value) => handleUpdateElement(selectedElement.id, { rotation: Number(value) })}
+                          min={-180}
+                          max={180}
+                          step={1}
+                          valueLabelDisplay="auto"
+                        />
+                        <Button size="small" variant="text" onClick={() => handleUpdateElement(selectedElement.id, { rotation: 0 })}>
+                          Reset Rotasi Teks
+                        </Button>
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Background"
+                          type="color"
+                          value={selectedElement.bgColor || '#ffffff'}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { bgColor: e.target.value })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Radius BG"
+                          type="number"
+                          value={Math.round(selectedElement.bgRadius || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { bgRadius: Math.max(0, Number(e.target.value)) })}
+                          fullWidth
+                        />
+                      </Box>
+                      <Button size="small" variant="text" color="secondary" onClick={() => handleUpdateElement(selectedElement.id, { bgColor: undefined, bgPadding: undefined, bgRadius: undefined })}>
+                        Reset Background
+                      </Button>
+                      <TextField
+                        label="Padding BG"
+                        type="number"
+                        value={Math.round(selectedElement.bgPadding || 0)}
+                        onChange={(e) => handleUpdateElement(selectedElement.id, { bgPadding: Math.max(0, Number(e.target.value)) })}
+                        fullWidth
+                      />
+
+                      <Typography sx={{ fontWeight: 'bold' }}>Shadow Teks</Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna"
+                          type="color"
+                          value={selectedElement.shadowColor || '#000000'}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value })}
+                        />
+
+                        <TextField
+                          label="Blur"
+                          type="number"
+                          value={Math.round(selectedElement.shadowBlur || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowBlur: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Offset X"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetX || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetX: Number(e.target.value) })}
+                        />
+                        <TextField
+                          label="Offset Y"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetY || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetY: Number(e.target.value) })}
+                        />
+                      </Box>
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity Shadow: {typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity.toFixed(2) : 1}
+                        </Typography>
+                        <Slider
+                          value={typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity : 1}
+                          onChange={(e, value) => handleUpdateElement(selectedElement.id, { shadowOpacity: Number(value) })}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          valueLabelDisplay="auto"
+                        />
+                      </Box>
+                      <Button size="small" variant="text" color="secondary" onClick={() => handleUpdateElement(selectedElement.id, { shadowColor: undefined, shadowBlur: undefined, shadowOffsetX: undefined, shadowOffsetY: undefined, shadowOpacity: undefined })}>
+                        Reset Shadow Teks
+                      </Button>
+
                       <Button
                         fullWidth
                         variant="outlined"
@@ -1025,6 +1308,200 @@ const Certificates = () => {
                       </Button>
                     </Stack>
                   )}
+
+                  {selectedElement.type === 'image' && (
+                    <Stack spacing={3}>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Posisi X"
+                          type="number"
+                          value={Math.round(selectedElement.x || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { x: Number(e.target.value) })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Posisi Y"
+                          type="number"
+                          value={Math.round(selectedElement.y || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { y: Number(e.target.value) })}
+                          fullWidth
+                        />
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Lebar (px)"
+                          type="number"
+                          value={Math.round(selectedElement.width || 100)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { width: Math.max(5, Number(e.target.value)) })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Tinggi (px)"
+                          type="number"
+                          value={Math.round(selectedElement.height || 100)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { height: Math.max(5, Number(e.target.value)) })}
+                          fullWidth
+                        />
+                      </Box>
+
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={lockImageRatio}
+                            onChange={(e) => setLockImageRatio(e.target.checked)}
+                          />
+                        }
+                        label="Kunci Rasio Gambar"
+                      />
+
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Rotasi: {Math.round(selectedElement.rotation || 0)}°
+                        </Typography>
+                        <Slider
+                          value={selectedElement.rotation || 0}
+                          onChange={(e, value) => handleUpdateElement(selectedElement.id, { rotation: Number(value) })}
+                          min={-180}
+                          max={180}
+                          step={1}
+                          valueLabelDisplay="auto"
+                        />
+                        <Button size="small" variant="text" onClick={() => handleUpdateElement(selectedElement.id, { rotation: 0 })}>
+                          Reset Rotasi
+                        </Button>
+                      </Box>
+
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity: {typeof selectedElement.opacity === 'number' ? selectedElement.opacity.toFixed(2) : 1}
+                        </Typography>
+                        <Slider
+                          value={typeof selectedElement.opacity === 'number' ? selectedElement.opacity : 1}
+                          onChange={(e, value) => handleUpdateElement(selectedElement.id, { opacity: Number(value) })}
+                          min={0.1}
+                          max={1}
+                          step={0.01}
+                          valueLabelDisplay="auto"
+                        />
+                        <Button size="small" variant="text" onClick={() => handleUpdateElement(selectedElement.id, { opacity: 1 })}>
+                          Reset Opacity
+                        </Button>
+                      </Box>
+
+                      {/* Image border & shadow */}
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Border & Shadow
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna Border"
+                          type="color"
+                          value={selectedElement.borderColor || '#000000'}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { borderColor: e.target.value })}
+                        />
+                        <TextField
+                          label="Lebar Border (px)"
+                          type="number"
+                          value={Math.round(selectedElement.borderWidth || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { borderWidth: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+                      <TextField
+                        label="Radius (px)"
+                        type="number"
+                        value={Math.round(selectedElement.borderRadius || 0)}
+                        onChange={(e) => handleUpdateElement(selectedElement.id, { borderRadius: Math.max(0, Number(e.target.value)) })}
+                        fullWidth
+                      />
+                      <Button size="small" variant="text" color="secondary" onClick={() => handleUpdateElement(selectedElement.id, { borderColor: undefined, borderWidth: undefined, borderRadius: undefined })}>
+                        Reset Border
+                      </Button>
+
+                      <Typography sx={{ fontWeight: 'bold' }}>Shadow Gambar</Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna"
+                          type="color"
+                          value={selectedElement.shadowColor || '#000000'}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value })}
+                        />
+                        <TextField
+                          label="Blur"
+                          type="number"
+                          value={Math.round(selectedElement.shadowBlur || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowBlur: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Offset X"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetX || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetX: Number(e.target.value) })}
+                        />
+                        <TextField
+                          label="Offset Y"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetY || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetY: Number(e.target.value) })}
+                        />
+                      </Box>
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity Shadow: {typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity.toFixed(2) : 1}
+                        </Typography>
+                        <Slider
+                          value={typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity : 1}
+                          onChange={(e, value) => handleUpdateElement(selectedElement.id, { shadowOpacity: Number(value) })}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          valueLabelDisplay="auto"
+                        />
+                      </Box>
+
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        color="error"
+                        startIcon={<Delete />}
+                        onClick={handleDeleteElement}
+                        sx={{ borderRadius: 2, py: 1.5 }}
+                      >
+                        Hapus Elemen
+                      </Button>
+                    </Stack>
+                  )}
+
+                  {/* Layer Ordering Section (common) */}
+                  <Divider sx={{ my: 3 }} />
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
+                    Urutan Layer
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                    <Tooltip title="Ke Depan">
+                      <IconButton size="small" onClick={handleBringToFront} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                        <VerticalAlignTop fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Naik 1">
+                      <IconButton size="small" onClick={handleBringForward} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                        <ArrowUpward fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Turun 1">
+                      <IconButton size="small" onClick={handleSendBackward} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                        <ArrowDownward fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Ke Belakang">
+                      <IconButton size="small" onClick={handleSendToBack} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                        <VerticalAlignBottom fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
                 </Box>
               )}
             </Paper>
@@ -1049,6 +1526,15 @@ const Certificates = () => {
                   height={stageSize.height}
                   ref={setStageRef}
                   style={{ border: '2px solid #e0e0e0', background: 'white', borderRadius: '8px' }}
+                  onMouseDown={(e) => {
+                    // Deselect when clicking on empty area
+                    const stage = e.target.getStage();
+                    const clickedOnEmpty = e.target === stage;
+                    if (clickedOnEmpty) {
+                      setSelectedElement(null);
+                      if (transformerRef.current) transformerRef.current.nodes([]);
+                    }
+                  }}
                 >
                   <Layer>
                     {backgroundImageObj && (
@@ -1064,44 +1550,185 @@ const Certificates = () => {
                       const isSelected = selectedElement && selectedElement.id === element.id;
                       return (
                         <React.Fragment key={element.id}>
-                          <Text
-                            x={element.x || 0}
-                            y={element.y || 0}
-                            text={element.text}
-                            fontSize={element.fontSize}
-                            fontFamily={element.fontFamily}
-                            fill={element.fill}
-                            fontStyle={
-                              `${element.fontStyle === 'italic' ? 'italic' : 'normal'} ${element.fontWeight === 'bold' ? 'bold' : 'normal'}`.trim()
-                            }
-                            textDecoration={element.textDecoration}
-                            align={element.align || 'left'}
-                            verticalAlign={element.verticalAlign || 'top'}
-                            width={element.width || 200}
-                            draggable={element.draggable}
-                            onClick={() => handleSelectElement(element)}
-                            onDragEnd={(e) => {
-                              handleUpdateElement(element.id, {
-                                x: e.target.x(),
-                                y: e.target.y()
-                              });
-                            }}
-                          />
-                          {isSelected && (
-                            <Rect
-                              x={element.x || 0}
-                              y={element.y || 0}
-                              width={element.width || 200}
-                              height={element.fontSize ? element.fontSize * 1.3 : 32}
-                              stroke="#1976d2"
-                              strokeWidth={2}
-                              dash={[6, 4]}
-                              listening={false}
-                            />
+                          {element.type === 'text' ? (
+                            <>
+                              {/* Optional background for text */}
+                              {element.bgColor && (
+                                <Rect
+                                  x={(element.x || 0) - (element.bgPadding || 0)}
+                                  y={(element.y || 0) - (element.bgPadding || 0)}
+                                  width={(element.width || 200) + 2 * (element.bgPadding || 0)}
+                                  height={(element.fontSize ? element.fontSize * 1.3 : 32) + 2 * (element.bgPadding || 0)}
+                                  fill={element.bgColor}
+                                  cornerRadius={element.bgRadius || 0}
+                                  listening={false}
+                                />
+                              )}
+                              <Text
+                                x={element.x || 0}
+                                y={element.y || 0}
+                                text={element.text}
+                                fontSize={element.fontSize}
+                                fontFamily={element.fontFamily}
+                                fill={element.fill}
+                                fontStyle={`${element.fontStyle === 'italic' ? 'italic' : 'normal'} ${element.fontWeight === 'bold' ? 'bold' : 'normal'}`.trim()}
+                                textDecoration={element.textDecoration}
+                                align={element.align || 'left'}
+                                verticalAlign={element.verticalAlign || 'top'}
+                                width={element.width || 200}
+                                rotation={element.rotation || 0}
+                                ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
+                                shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
+                                shadowBlur={element.shadowBlur || 0}
+                                shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
+                                shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
+                                draggable={element.draggable}
+                                onClick={() => handleSelectElement(element)}
+                                onDragEnd={(e) => {
+                                  handleUpdateElement(element.id, { x: e.target.x(), y: e.target.y() });
+                                }}
+                                onTransformEnd={(e) => {
+                                  const node = e.target;
+                                  const scaleX = node.scaleX();
+                                  const scaleY = node.scaleY();
+                                  const prevWidth = element.width || 200;
+                                  const prevFontSize = element.fontSize || 24;
+                                  const newWidth = Math.max(50, prevWidth * scaleX);
+                                  const newFontSize = Math.max(6, Math.round(prevFontSize * scaleY));
+                                  handleUpdateElement(element.id, {
+                                    x: node.x(),
+                                    y: node.y(),
+                                    width: newWidth,
+                                    fontSize: newFontSize,
+                                    rotation: node.rotation()
+                                  });
+                                  // sync sidebar properties immediately
+                                  setTextProperties((prev) => ({
+                                    ...prev,
+                                    width: newWidth,
+                                    fontSize: newFontSize
+                                  }));
+                                  node.scaleX(1);
+                                  node.scaleY(1);
+                                }}
+                              />
+                              {isSelected && (
+                                <Rect
+                                  x={element.x || 0}
+                                  y={element.y || 0}
+                                  width={element.width || 200}
+                                  height={element.fontSize ? element.fontSize * 1.3 : 32}
+                                  stroke="#1976d2"
+                                  strokeWidth={2}
+                                  dash={[6, 4]}
+                                  listening={false}
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {/* Outer group handles rotation, dragging, and SHADOW so it's not clipped */}
+                              <Group
+                                x={element.x || 0}
+                                y={element.y || 0}
+                                rotation={element.rotation || 0}
+                                ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
+                                draggable={element.draggable}
+                                onClick={() => handleSelectElement(element)}
+                                onDragEnd={(e) => {
+                                  handleUpdateElement(element.id, { x: e.target.x(), y: e.target.y() });
+                                }}
+                                onTransformEnd={(e) => {
+                                  const node = e.target;
+                                  const scaleX = node.scaleX();
+                                  const scaleY = node.scaleY();
+                                  const newWidth = Math.max(5, (element.width || 100) * scaleX);
+                                  const newHeight = Math.max(5, (element.height || 100) * scaleY);
+                                  handleUpdateElement(element.id, {
+                                    x: node.x(),
+                                    y: node.y(),
+                                    width: newWidth,
+                                    height: newHeight,
+                                    rotation: node.rotation()
+                                  });
+                                  node.scaleX(1);
+                                  node.scaleY(1);
+                                }}
+                                shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
+                                shadowBlur={element.shadowBlur || 0}
+                                shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
+                                shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
+                              >
+                                {/* Inner clipped group for rounded corners and border */}
+                                <Group
+                                  clipFunc={element.borderRadius ? (ctx) => {
+                                    const w = element.width || 100;
+                                    const h = element.height || 100;
+                                    const r = Math.min(element.borderRadius || 0, w / 2, h / 2);
+                                    const x = 0, y = 0;
+                                    ctx.beginPath();
+                                    ctx.moveTo(x + r, y);
+                                    ctx.arcTo(x + w, y, x + w, y + h, r);
+                                    ctx.arcTo(x + w, y + h, x, y + h, r);
+                                    ctx.arcTo(x, y + h, x, y, r);
+                                    ctx.arcTo(x, y, x + w, y, r);
+                                    ctx.closePath();
+                                  } : undefined}
+                                >
+                                  <KonvaImage
+                                    image={imageCache[element.id] || null}
+                                    x={0}
+                                    y={0}
+                                    width={element.width || 100}
+                                    height={element.height || 100}
+                                    opacity={typeof element.opacity === 'number' ? element.opacity : 1}
+                                    listening={true}
+                                  />
+                                  {(element.borderWidth || 0) > 0 && (
+                                    <Rect
+                                      x={0}
+                                      y={0}
+                                      width={element.width || 100}
+                                      height={element.height || 100}
+                                      stroke={element.borderColor || '#000'}
+                                      strokeWidth={element.borderWidth || 1}
+                                      cornerRadius={element.borderRadius || 0}
+                                      listening={false}
+                                    />
+                                  )}
+                                </Group>
+                              </Group>
+                              {isSelected && (
+                                <Rect
+                                  x={element.x || 0}
+                                  y={element.y || 0}
+                                  width={element.width || 100}
+                                  height={element.height || 100}
+                                  stroke="#1976d2"
+                                  strokeWidth={2}
+                                  dash={[6, 4]}
+                                  listening={false}
+                                />
+                              )}
+                            </>
                           )}
                         </React.Fragment>
                       );
                     })}
+                    {/* Transformer for selected element (text or image) */}
+                    <Transformer
+                      ref={transformerRef}
+                      rotateEnabled
+                      keepRatio={selectedElement?.type === 'image' ? lockImageRatio : false}
+                      boundBoxFunc={(oldBox, newBox) => {
+                        const MIN_SIZE = 10;
+                        if (newBox.width < MIN_SIZE || newBox.height < MIN_SIZE) {
+                          return oldBox;
+                        }
+                        return newBox;
+                      }}
+                      enabledAnchors={['top-left','top-right','bottom-left','bottom-right','top-center','bottom-center','middle-left','middle-right']}
+                    />
                   </Layer>
                 </Stage>
               </Paper>

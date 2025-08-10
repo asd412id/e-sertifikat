@@ -181,7 +181,7 @@ class CertificateService {
       }
 
       // Generate PDF buffer only (no persistence)
-      const pdfBuffer = await this.createPDFFromTemplate(template, participant);
+      const pdfBuffer = await this.createPDF(template, participant);
       return { pdfBuffer, participant: participant.data };
     } catch (error) {
       console.error('Certificate generation failed:', error);
@@ -306,26 +306,20 @@ class CertificateService {
     }
   }
 
-  async createPDFFromTemplate(template, participant) {
+  async createPDF(template, participant) {
     try {
       // Use Puppeteer for better font support
-      return await puppeteerPDFService.createPDFFromTemplate(template, participant);
+      return await puppeteerPDFService.createPDF(template, participant);
     } catch (error) {
       console.error('Puppeteer failed:', error);
       throw error; // propagate to controller
     }
   }
 
+  // replacePlaceholders method is now handled in PuppeteerPDFService
+  // This method is kept for backward compatibility but delegates to the main service
   replacePlaceholders(text, participantData) {
-    let result = text;
-
-    // Replace placeholders like {nama}, {instansi}, etc.
-    for (const [key, value] of Object.entries(participantData)) {
-      const placeholder = `{${key}}`;
-      result = result.replace(new RegExp(placeholder, 'g'), value || '');
-    }
-
-    return result;
+    return puppeteerPDFService.replacePlaceholders(text, participantData);
   }
 }
 

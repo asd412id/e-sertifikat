@@ -113,7 +113,7 @@ async function testBulkPDFGeneration() {
 
     // Test bulk generation
     console.log('\n=== Testing Bulk PDF Generation ===');
-    const bulkPdfBuffer = await PuppeteerPDFService.createBulkPDFFromTemplate(testTemplate, testParticipants);
+    const bulkPdfBuffer = await PuppeteerPDFService.createPDF(testTemplate, testParticipants);
 
     const bulkTime = Date.now() - startTime;
     console.log(`Bulk PDF generation completed in ${bulkTime}ms`);
@@ -129,7 +129,7 @@ async function testBulkPDFGeneration() {
 
     for (let i = 0; i < testParticipants.length; i++) {
       const participant = testParticipants[i];
-      const pdfBuffer = await PuppeteerPDFService.createPDFFromTemplate(testTemplate, participant);
+      const pdfBuffer = await PuppeteerPDFService.createPDF(testTemplate, participant);
       await fs.writeFile(`./test_individual_${i + 1}.pdf`, pdfBuffer);
       console.log(`Generated individual PDF ${i + 1}: ${pdfBuffer.length} bytes`);
     }
