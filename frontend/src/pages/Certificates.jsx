@@ -74,6 +74,19 @@ const Certificates = () => {
     });
   };
 
+  // Helper: preload a set of fonts (ignores web-safe)
+  const preloadFonts = (families) => {
+    try {
+      const unique = Array.from(new Set((families || []).filter(f => f && !WEB_SAFE_FONTS.includes(f))));
+      if (unique.length === 0) return;
+      WebFont.load({
+        google: { families: unique },
+        active: () => setFontLoadedTick(t => t + 1),
+        inactive: () => setFontLoadedTick(t => t + 1)
+      });
+    } catch (_) { /* noop */ }
+  };
+
   // Preload all dropdown fonts once to render styles immediately on open
   const fontsPreloadedRef = useRef(false);
   const preloadDropdownFonts = () => {
@@ -210,6 +223,11 @@ const Certificates = () => {
       setTemplateName(template.name);
       setElements(template.design?.objects || []);
       setStageSize({ width: template.width || 842, height: template.height || 595 });
+      // Preload fonts used in the template so text renders with correct fonts
+      const templateFonts = (template.design?.objects || [])
+        .filter(el => el.type === 'text' && el.fontFamily)
+        .map(el => el.fontFamily);
+      preloadFonts(templateFonts);
       // Load background image if it exists in the template
       if (template.design?.background) {
         setBackgroundImage(template.design.background);
@@ -321,6 +339,10 @@ const Certificates = () => {
   const handleSelectElement = (element) => {
     setSelectedElement(element);
     if (element.type === 'text') {
+      // Ensure font is loaded when selecting a text element
+      if (element.fontFamily) {
+        loadFont(element.fontFamily).then(() => setFontLoadedTick(t => t + 1));
+      }
       setTextProperties({
         fontSize: element.fontSize || 24,
         fontFamily: element.fontFamily || 'Arial',
