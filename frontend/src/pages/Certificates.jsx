@@ -26,6 +26,7 @@ import {
   Slider,
   Checkbox,
   FormControlLabel,
+  Switch,
   Divider,
   Menu,
   Stack,
@@ -42,7 +43,13 @@ import {
   Save,
   ArrowBack,
   MoreVert,
-  GetApp
+  GetApp,
+  AlignHorizontalLeft,
+  AlignHorizontalCenter,
+  AlignHorizontalRight,
+  AlignVerticalTop,
+  AlignVerticalCenter,
+  AlignVerticalBottom
 } from '@mui/icons-material';
 import {
   VerticalAlignTop,
@@ -140,6 +147,7 @@ const Certificates = () => {
   const [elements, setElements] = useState([]);
   const [backgroundImage, setBackgroundImage] = useState(null);
   const [backgroundImageObj, setBackgroundImageObj] = useState(null);
+  const backgroundImageRef = useRef(null);
   const [backgroundImageFile, setBackgroundImageFile] = useState(null);
   const [stageSize, setStageSize] = useState({ width: 842, height: 595 }); // A4 landscape
 
@@ -158,7 +166,8 @@ const Certificates = () => {
     textDecoration: 'none',
     align: 'left',
     verticalAlign: 'top',
-    width: 200
+    width: 200,
+    wordWrap: true
   });
 
   // Centralized list of available fonts for selection (includes system and Google fonts)
@@ -224,6 +233,14 @@ const Certificates = () => {
     }
   }, [selectedElement, elements]);
 
+  // Handle click outside to deselect
+  const handleStageClick = (e) => {
+    // Only deselect if clicking on the stage itself (empty area)
+    if (e.target === e.target.getStage()) {
+      setSelectedElement(null);
+    }
+  };
+
   // ------- Layer Ordering Handlers -------
   const reorderElements = (fromIndex, toIndex) => {
     setElements((prev) => {
@@ -263,6 +280,40 @@ const Certificates = () => {
     const idx = elements.findIndex((e) => e.id === selectedElement.id);
     if (idx <= 0) return;
     reorderElements(idx, idx - 1);
+  };
+
+  // Alignment relative to canvas (single selected element)
+  const alignSelectedElement = (direction) => {
+    if (!selectedElement) return;
+    const el = selectedElement;
+    let updates = {};
+    const elWidth = el.width || (el.type === 'image' ? (el.width || 100) : 200);
+    const elHeight = el.type === 'image' ? (el.height || 100) : (el.fontSize ? el.fontSize * 1.3 : 32);
+    switch (direction) {
+      case 'left':
+        updates.x = 0;
+        break;
+      case 'center-h':
+        updates.x = Math.round((stageSize.width - elWidth) / 2);
+        break;
+      case 'right':
+        updates.x = Math.round(stageSize.width - elWidth);
+        break;
+      case 'top':
+        updates.y = 0;
+        break;
+      case 'middle-v':
+        updates.y = Math.round((stageSize.height - elHeight) / 2);
+        break;
+      case 'bottom':
+        updates.y = Math.round(stageSize.height - elHeight);
+        break;
+      default:
+        break;
+    }
+    if (Object.keys(updates).length) {
+      handleUpdateElement(el.id, updates);
+    }
   };
 
   const fetchTemplates = async (page = 1) => {
@@ -386,6 +437,7 @@ const Certificates = () => {
       align: textProperties.align,
       verticalAlign: textProperties.verticalAlign,
       width: 200, // Set default width for proper alignment
+      wordWrap: textProperties.wordWrap,
       draggable: true
     };
     setElements([...elements, newText]);
@@ -436,6 +488,7 @@ const Certificates = () => {
       width: 200, // Set default width for proper alignment
       align: 'left',
       verticalAlign: 'top',
+      wordWrap: textProperties.wordWrap,
       draggable: true,
       isDynamic: true,
       fieldName: field.name
@@ -460,7 +513,8 @@ const Certificates = () => {
         textDecoration: element.textDecoration || 'none',
         align: element.align || 'left',
         verticalAlign: element.verticalAlign || 'top',
-        width: element.width || 200
+        width: element.width || 200,
+        wordWrap: element.wordWrap !== undefined ? element.wordWrap : true
       });
     } else if (element.type === 'image') {
       // ensure image cached (for existing templates)
@@ -1122,7 +1176,7 @@ const Certificates = () => {
                         label="Warna"
                         type="color"
                         value={textProperties.fill}
-                        onChange={(e) => handleUpdateTextProperties('fill', e.target.value)}
+                        onChange={(e) => scheduleUpdate('textFill', () => handleUpdateTextProperties('fill', e.target.value), 60)}
                         fullWidth
                       />
 
@@ -1197,6 +1251,17 @@ const Certificates = () => {
                         />
                       </Box>
 
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={textProperties.wordWrap}
+                            onChange={(e) => handleUpdateTextProperties('wordWrap', e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label="Word Wrap"
+                      />
+
                       {/* Advanced text properties */}
                       <Divider />
                       <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
@@ -1224,7 +1289,7 @@ const Certificates = () => {
                           label="Background"
                           type="color"
                           value={selectedElement.bgColor || '#ffffff'}
-                          onChange={(e) => handleUpdateElement(selectedElement.id, { bgColor: e.target.value })}
+                          onChange={(e) => scheduleUpdate('textBgColor', () => handleUpdateElement(selectedElement.id, { bgColor: e.target.value }), 60)}
                           fullWidth
                         />
                         <TextField
@@ -1252,7 +1317,7 @@ const Certificates = () => {
                           label="Warna"
                           type="color"
                           value={selectedElement.shadowColor || '#000000'}
-                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value })}
+                          onChange={(e) => scheduleUpdate('textShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value }), 60)}
                         />
 
                         <TextField
@@ -1399,7 +1464,7 @@ const Certificates = () => {
                           label="Warna Border"
                           type="color"
                           value={selectedElement.borderColor || '#000000'}
-                          onChange={(e) => handleUpdateElement(selectedElement.id, { borderColor: e.target.value })}
+                          onChange={(e) => scheduleUpdate('imageBorderColor', () => handleUpdateElement(selectedElement.id, { borderColor: e.target.value }), 60)}
                         />
                         <TextField
                           label="Lebar Border (px)"
@@ -1425,7 +1490,7 @@ const Certificates = () => {
                           label="Warna"
                           type="color"
                           value={selectedElement.shadowColor || '#000000'}
-                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value })}
+                          onChange={(e) => scheduleUpdate('imageShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value }), 60)}
                         />
                         <TextField
                           label="Blur"
@@ -1502,6 +1567,43 @@ const Certificates = () => {
                       </IconButton>
                     </Tooltip>
                   </Stack>
+                  {selectedElement && (
+                    <>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>Posisi (Canvas)</Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+                        <Tooltip title="Rata Kiri">
+                          <IconButton size="small" onClick={() => alignSelectedElement('left')} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <AlignHorizontalLeft fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Tengah Horizontal">
+                          <IconButton size="small" onClick={() => alignSelectedElement('center-h')} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <AlignHorizontalCenter fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Rata Kanan">
+                          <IconButton size="small" onClick={() => alignSelectedElement('right')} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <AlignHorizontalRight fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Rata Atas">
+                          <IconButton size="small" onClick={() => alignSelectedElement('top')} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <AlignVerticalTop fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Tengah Vertikal">
+                          <IconButton size="small" onClick={() => alignSelectedElement('middle-v')} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <AlignVerticalCenter fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Rata Bawah">
+                          <IconButton size="small" onClick={() => alignSelectedElement('bottom')} sx={{ border: '1px solid', borderColor: 'divider' }}>
+                            <AlignVerticalBottom fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </>
+                  )}
                 </Box>
               )}
             </Paper>
@@ -1527,12 +1629,22 @@ const Certificates = () => {
                   ref={setStageRef}
                   style={{ border: '2px solid #e0e0e0', background: 'white', borderRadius: '8px' }}
                   onMouseDown={(e) => {
-                    // Deselect when clicking on empty area
                     const stage = e.target.getStage();
-                    const clickedOnEmpty = e.target === stage;
-                    if (clickedOnEmpty) {
+                    const tr = transformerRef.current;
+                    // Ignore clicks on transformer handles
+                    if (tr && (e.target === tr || e.target.getParent() === tr)) return;
+                    // Determine if clicked target corresponds to any registered element node
+                    const clickedNode = e.target;
+                    const elementNodes = Object.values(shapeRefs.current || {});
+                    const clickedOnElement = elementNodes.some(node => node === clickedNode || (node.findOne && node.findOne(`#${clickedNode.id()}`)));
+                    // Treat background image as empty area
+                    const clickedOnBackground = backgroundImageRef.current && clickedNode === backgroundImageRef.current;
+                    if (!clickedOnElement || clickedOnBackground || clickedNode === stage) {
                       setSelectedElement(null);
-                      if (transformerRef.current) transformerRef.current.nodes([]);
+                      if (tr) {
+                        tr.nodes([]);
+                        tr.getLayer() && tr.getLayer().batchDraw();
+                      }
                     }
                   }}
                 >
@@ -1544,6 +1656,7 @@ const Certificates = () => {
                         y={0}
                         width={stageSize.width}
                         height={stageSize.height}
+                        ref={backgroundImageRef}
                       />
                     )}
                     {elements.map((element) => {
@@ -1611,19 +1724,10 @@ const Certificates = () => {
                                   node.scaleX(1);
                                   node.scaleY(1);
                                 }}
+                                wordWrap={element.wordWrap !== undefined ? element.wordWrap : true}
+                                wordWrapPadding={0}
                               />
-                              {isSelected && (
-                                <Rect
-                                  x={element.x || 0}
-                                  y={element.y || 0}
-                                  width={element.width || 200}
-                                  height={element.fontSize ? element.fontSize * 1.3 : 32}
-                                  stroke="#1976d2"
-                                  strokeWidth={2}
-                                  dash={[6, 4]}
-                                  listening={false}
-                                />
-                              )}
+                              {/* Removed text bounding box rectangle as requested */}
                             </>
                           ) : (
                             <>
@@ -1698,18 +1802,7 @@ const Certificates = () => {
                                   )}
                                 </Group>
                               </Group>
-                              {isSelected && (
-                                <Rect
-                                  x={element.x || 0}
-                                  y={element.y || 0}
-                                  width={element.width || 100}
-                                  height={element.height || 100}
-                                  stroke="#1976d2"
-                                  strokeWidth={2}
-                                  dash={[6, 4]}
-                                  listening={false}
-                                />
-                              )}
+                              {/* Removed image bounding box rectangle */}
                             </>
                           )}
                         </React.Fragment>
@@ -1727,7 +1820,8 @@ const Certificates = () => {
                         }
                         return newBox;
                       }}
-                      enabledAnchors={['top-left','top-right','bottom-left','bottom-right','top-center','bottom-center','middle-left','middle-right']}
+                      enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'middle-left', 'middle-right']}
+                      shouldOverdrawWholeArea={true}
                     />
                   </Layer>
                 </Stage>

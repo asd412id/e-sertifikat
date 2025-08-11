@@ -438,14 +438,14 @@ class PuppeteerPDFService {
             styles.push(`top: ${baseY}px`);
             styles.push(`width: ${width}px`);
             let height = (element.fontSize ? element.fontSize * 1.3 : 32);
-            
+
             // Handle shadow offset compensation for bulk generation
             if (element.shadowOffsetY && element.shadowOffsetY < 0) {
               // Adjust top position when shadow is above the text
               styles.push(`top: ${baseY + element.shadowOffsetY}px`);
             }
             styles.push(`height: ${height}px`);
-            
+
             // PDF Position Compensation - Fix for text position differences between editor and PDF
             // The issue occurs because:
             // 1. Browser and PDF renderers use different font metrics
@@ -478,26 +478,26 @@ class PuppeteerPDFService {
             // 28. Different text rendering text rendering sub-pixel rendering
             // 29. Different text rendering text rendering text rendering
             // 30. Different text rendering text rendering text rendering
-            
+
             // Apply compensation based on font size and vertical alignment
             let pdfCompensation = 0;
-            
+
             // Base compensation for PDF rendering differences
             pdfCompensation -= 1; // General PDF offset
-            
+
             // Additional compensation based on font size
             if (element.fontSize) {
               // Larger fonts need more compensation due to different font scaling
               pdfCompensation -= Math.floor(element.fontSize / 20);
             }
-            
+
             // Additional compensation for vertical alignment
             if (element.verticalAlign === 'middle') {
               pdfCompensation -= 2; // Middle alignment needs more adjustment
             } else if (element.verticalAlign === 'bottom') {
               pdfCompensation -= 3; // Bottom alignment needs most adjustment
             }
-            
+
             // Apply the compensation
             styles.push(`top: ${baseY + pdfCompensation}px`);
 
@@ -530,6 +530,14 @@ class PuppeteerPDFService {
 
             styles.push('overflow: visible');
             styles.push('white-space: pre');
+            
+            // Apply word wrap setting
+            if (element.wordWrap) {
+              styles.push('white-space: normal');
+              styles.push('word-wrap: break-word');
+            } else {
+              styles.push('white-space: nowrap');
+            }
 
             // Apply rotation to text elements
             if (typeof element.rotation === 'number' && element.rotation !== 0) {
@@ -544,7 +552,7 @@ class PuppeteerPDFService {
               const blur = element.shadowBlur || 0;
               const baseCol = element.shadowColor || 'rgb(0,0,0)';
               const opacity = typeof element.shadowOpacity === 'number' ? Math.max(0, Math.min(1, element.shadowOpacity)) : 1;
-              
+
               // Convert color to RGBA with opacity
               const toRgba = (c, a) => {
                 try {
@@ -555,9 +563,9 @@ class PuppeteerPDFService {
                   if (cc.startsWith('#')) {
                     const hex = cc.slice(1);
                     const norm = hex.length === 3 ? hex.split('').map(h => h + h).join('') : hex;
-                    const r = parseInt(norm.substring(0,2), 16) || 0;
-                    const g = parseInt(norm.substring(2,4), 16) || 0;
-                    const b = parseInt(norm.substring(4,6), 16) || 0;
+                    const r = parseInt(norm.substring(0, 2), 16) || 0;
+                    const g = parseInt(norm.substring(2, 4), 16) || 0;
+                    const b = parseInt(norm.substring(4, 6), 16) || 0;
                     return `rgba(${r}, ${g}, ${b}, ${a})`;
                   }
                   return cc;
@@ -648,8 +656,8 @@ class PuppeteerPDFService {
         const port = process.env.PORT || 3000;
 
         // Handle local upload files (support both legacy /uploads and current /api/uploads)
-        if (url.startsWith(`http://localhost:${port}/uploads/`) || 
-            url.startsWith(`http://localhost:${port}/api/uploads/`)) {
+        if (url.startsWith(`http://localhost:${port}/uploads/`) ||
+          url.startsWith(`http://localhost:${port}/api/uploads/`)) {
           const fileName = url.startsWith(`http://localhost:${port}/api/uploads/`)
             ? url.replace(`http://localhost:${port}/api/uploads/`, '')
             : url.replace(`http://localhost:${port}/uploads/`, '');
@@ -745,10 +753,10 @@ class PuppeteerPDFService {
 
       // If fonts are not loaded properly (excluding system fonts), try to force a reload
       const systemFonts = [
-        'Arial','Helvetica','Times New Roman','Georgia','Courier New',
-        'Verdana','Tahoma','Trebuchet MS','Segoe UI','Calibri','Cambria',
-        'Garamond','Lucida Console','Monaco','Comic Sans MS','Impact',
-        'Palatino','Bookman','Avant Garde','Century Gothic','Franklin Gothic Medium',
+        'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
+        'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
+        'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
+        'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium',
         'Brush Script MT'
       ];
       const needReload = fontVerification.some(result => (!result.isFontLoaded || !result.isFontApplied) && !systemFonts.includes(result.firstFont));
@@ -822,7 +830,7 @@ module.exports = new PuppeteerPDFService();
 
 // --------------- Helper methods for local Google Fonts caching ---------------
 // Add methods on the prototype to keep class layout intact
-PuppeteerPDFService.prototype.prepareLocalFonts = async function(template) {
+PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
   try {
     const { googleFonts, families } = this._buildGoogleFontsQuery(template);
     if (!googleFonts.length) return '';
@@ -1002,7 +1010,7 @@ PuppeteerPDFService.prototype._buildGoogleFontsQuery = function (template) {
   };
 };
 
-PuppeteerPDFService.prototype._fetchText = function(url, headers = {}) {
+PuppeteerPDFService.prototype._fetchText = function (url, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers }, res => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -1021,7 +1029,7 @@ PuppeteerPDFService.prototype._fetchText = function(url, headers = {}) {
   });
 };
 
-PuppeteerPDFService.prototype._downloadFile = function(url, destPath) {
+PuppeteerPDFService.prototype._downloadFile = function (url, destPath) {
   return new Promise((resolve, reject) => {
     const file = fsSync.createWriteStream(destPath);
     https.get(url, res => {
@@ -1043,7 +1051,6 @@ PuppeteerPDFService.prototype._downloadFile = function(url, destPath) {
   });
 };
 
-PuppeteerPDFService.prototype._sanitizeFamilyDir = function(segment) {
+PuppeteerPDFService.prototype._sanitizeFamilyDir = function (segment) {
   return segment.toLowerCase().replace(/[^a-z0-9-_]/g, '_');
 };
-
