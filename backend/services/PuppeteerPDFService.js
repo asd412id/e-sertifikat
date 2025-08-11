@@ -537,6 +537,32 @@ class PuppeteerPDFService {
               styles.push('word-wrap: break-word');
             } else {
               styles.push('white-space: nowrap');
+              
+              // Handle text extension based on alignment when nowrap is enabled
+              if (element.align === 'center') {
+                // For centered text with nowrap, expand equally in both directions
+                styles.push('text-align: center');
+                styles.push('display: inline-block');
+                styles.push('width: auto');
+                styles.push('left: 0');
+                styles.push('right: 0');
+                styles.push('margin-left: auto');
+                styles.push('margin-right: auto');
+              } else if (element.align === 'right') {
+                // For right-aligned text with nowrap, expand to the left
+                styles.push('text-align: right');
+                styles.push('display: inline-block');
+                styles.push('width: auto');
+                styles.push('left: 0');
+                styles.push('right: 0');
+                styles.push('margin-left: auto');
+              } else {
+                // For left-aligned text with nowrap, expand to the right (default behavior)
+                styles.push('text-align: left');
+                styles.push('display: inline-block');
+                styles.push('width: auto');
+                styles.push('left: 0');
+              }
             }
 
             // Apply rotation to text elements
