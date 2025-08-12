@@ -437,7 +437,8 @@ class PuppeteerPDFService {
             styles.push(`left: ${baseX}px`);
             styles.push(`top: ${baseY}px`);
             styles.push(`width: ${width}px`);
-            let height = (element.fontSize ? element.fontSize * 1.3 : 32);
+            const lineHeightFactor = (typeof element.lineHeight === 'number' && element.lineHeight > 0) ? element.lineHeight : 1.0;
+            let height = (element.fontSize ? element.fontSize * lineHeightFactor : 32);
 
             // Handle shadow offset compensation for bulk generation
             if (element.shadowOffsetY && element.shadowOffsetY < 0) {
@@ -479,32 +480,11 @@ class PuppeteerPDFService {
             // 29. Different text rendering text rendering text rendering
             // 30. Different text rendering text rendering text rendering
 
-            // Apply compensation based on font size and vertical alignment
-            let pdfCompensation = 0;
-
-            // Base compensation for PDF rendering differences
-            pdfCompensation -= 1; // General PDF offset
-
-            // Additional compensation based on font size
-            if (element.fontSize) {
-              // Larger fonts need more compensation due to different font scaling
-              pdfCompensation -= Math.floor(element.fontSize / 20);
-            }
-
-            // Additional compensation for vertical alignment
-            if (element.verticalAlign === 'middle') {
-              pdfCompensation -= 2; // Middle alignment needs more adjustment
-            } else if (element.verticalAlign === 'bottom') {
-              pdfCompensation -= 3; // Bottom alignment needs most adjustment
-            }
-
-            // Apply the compensation
-            styles.push(`top: ${baseY + pdfCompensation}px`);
+            // Gunakan koordinat top persis seperti di editor (tanpa kompensasi PDF)
+            styles.push(`top: ${baseY}px`);
 
             // Text alignment
-            if (element.align) {
-              styles.push(`text-align: ${element.align}`);
-            }
+            if (element.align) styles.push(`text-align: ${element.align}`);
 
             // Vertical alignment
             if (element.verticalAlign === 'middle' || element.verticalAlign === 'bottom') {
@@ -524,20 +504,22 @@ class PuppeteerPDFService {
               }
             } else {
               if (element.fontSize) {
-                styles.push(`line-height: 1.35rem`);
+                // Use pixel line height to match canvas rendering closely
+                styles.push(`line-height: ${Math.round(element.fontSize * lineHeightFactor)}px`);
+                styles.push(`height: ${Math.round(element.fontSize * lineHeightFactor)}px`);
               }
             }
 
             styles.push('overflow: visible');
             styles.push('white-space: pre');
-            
+
             // Apply word wrap setting
             if (element.wordWrap) {
               styles.push('white-space: normal');
               styles.push('word-wrap: break-word');
             } else {
               styles.push('white-space: nowrap');
-              
+
               // Handle text extension based on alignment when nowrap is enabled
               if (element.align === 'center') {
                 // For centered text with nowrap, expand equally in both directions
@@ -601,7 +583,34 @@ class PuppeteerPDFService {
               styles.push(`text-shadow: ${sx}px ${sy}px ${blur}px ${col}`);
             }
 
-            html += `<div style="${styles.join('; ')}">${text}</div>`;
+            // Wrap with background container if bgColor specified for symmetric padding
+            if (element.bgColor) {
+              const pad = Math.max(0, element.bgPadding || 0);
+              const radius = Math.max(0, element.bgRadius || 0);
+              const bgStyles = [
+                'position: absolute',
+                `left: ${baseX - pad}px`,
+                // subtract pad on y too for symmetry (tanpa pdfCompensation)
+                `top: ${baseY - pad}px`,
+                `width: ${width + pad * 2}px`,
+                `height: ${height + pad * 2}px`,
+                `background: ${element.bgColor}`,
+                radius ? `border-radius: ${radius}px` : '',
+                'display: flex',
+                'flex-direction: column',
+                'justify-content: center'
+              ].filter(Boolean);
+              // alignment inside background
+              if (element.align === 'right') bgStyles.push('align-items: flex-end');
+              else if (element.align === 'center') bgStyles.push('align-items: center');
+              else bgStyles.push('align-items: flex-start');
+              // Remove absolute positioning duplication from text styles
+              const innerStyles = styles.filter(s => !s.startsWith('left:') && !s.startsWith('top:') && !s.startsWith('position:') && !s.startsWith('width:') && !s.startsWith('height:'));
+              innerStyles.push(`padding: 0 ${Math.max(0, Math.min(pad, Math.round(width / 4)))}px`);
+              html += `<div style="${bgStyles.join('; ')}"><div style="${innerStyles.join('; ')}">${text}</div></div>`;
+            } else {
+              html += `<div style="${styles.join('; ')}">${text}</div>`;
+            }
           } else if (element.type === 'image' && element.src) {
             // Resolve image URL (support local uploads)
             let imgUrl = element.src;

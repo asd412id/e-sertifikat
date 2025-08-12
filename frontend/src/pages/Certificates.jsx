@@ -167,7 +167,8 @@ const Certificates = () => {
     align: 'left',
     verticalAlign: 'top',
     width: 200,
-    wordWrap: true
+    wordWrap: true,
+    lineHeight: 1
   });
 
   // Centralized list of available fonts for selection (includes system and Google fonts)
@@ -438,6 +439,7 @@ const Certificates = () => {
       verticalAlign: textProperties.verticalAlign,
       width: 200, // Set default width for proper alignment
       wordWrap: textProperties.wordWrap,
+      lineHeight: textProperties.lineHeight,
       draggable: true
     };
     setElements([...elements, newText]);
@@ -489,6 +491,7 @@ const Certificates = () => {
       align: 'left',
       verticalAlign: 'top',
       wordWrap: textProperties.wordWrap,
+      lineHeight: textProperties.lineHeight,
       draggable: true,
       isDynamic: true,
       fieldName: field.name
@@ -515,6 +518,8 @@ const Certificates = () => {
         verticalAlign: element.verticalAlign || 'top',
         width: element.width || 200,
         wordWrap: element.wordWrap !== undefined ? element.wordWrap : true
+        ,
+        lineHeight: element.lineHeight || 1
       });
     } else if (element.type === 'image') {
       // ensure image cached (for existing templates)
@@ -534,10 +539,28 @@ const Certificates = () => {
   };
 
   const handleUpdateElement = (id, updates) => {
-    // Update elements array
-    setElements(prev => prev.map(el => (el.id === id ? { ...el, ...updates } : el)));
-    // Keep selectedElement in sync so UI controls show latest values
-    setSelectedElement(prev => (prev && prev.id === id ? { ...prev, ...updates } : prev));
+    // Update elements array with change detection to prevent unnecessary re-renders
+    setElements(prev => prev.map(el => {
+      if (el.id !== id) return el;
+      // shallow compare updates
+      let changed = false;
+      for (const k in updates) {
+        if (Object.prototype.hasOwnProperty.call(updates, k) && el[k] !== updates[k]) {
+          changed = true;
+          break;
+        }
+      }
+      return changed ? { ...el, ...updates } : el;
+    }));
+    // Keep selectedElement in sync so UI controls show latest values (only if something changed)
+    setSelectedElement(prev => {
+      if (!prev || prev.id !== id) return prev;
+      let changed = false;
+      for (const k in updates) {
+        if (Object.prototype.hasOwnProperty.call(updates, k) && prev[k] !== updates[k]) { changed = true; break; }
+      }
+      return changed ? { ...prev, ...updates } : prev;
+    });
   };
 
   const handleDeleteElement = () => {
@@ -1176,7 +1199,10 @@ const Certificates = () => {
                         label="Warna"
                         type="color"
                         value={textProperties.fill}
-                        onChange={(e) => scheduleUpdate('textFill', () => handleUpdateTextProperties('fill', e.target.value), 60)}
+                        onChange={(e) => {
+                          const val = e.target.value; // capture before debounce (React event pooling)
+                          scheduleUpdate('textFill', () => handleUpdateTextProperties('fill', val), 60);
+                        }}
                         fullWidth
                       />
 
@@ -1289,7 +1315,10 @@ const Certificates = () => {
                           label="Background"
                           type="color"
                           value={selectedElement.bgColor || '#ffffff'}
-                          onChange={(e) => scheduleUpdate('textBgColor', () => handleUpdateElement(selectedElement.id, { bgColor: e.target.value }), 60)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('textBgColor', () => handleUpdateElement(selectedElement.id, { bgColor: val }), 60);
+                          }}
                           fullWidth
                         />
                         <TextField
@@ -1317,7 +1346,10 @@ const Certificates = () => {
                           label="Warna"
                           type="color"
                           value={selectedElement.shadowColor || '#000000'}
-                          onChange={(e) => scheduleUpdate('textShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value }), 60)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('textShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: val }), 60);
+                          }}
                         />
 
                         <TextField
@@ -1464,7 +1496,10 @@ const Certificates = () => {
                           label="Warna Border"
                           type="color"
                           value={selectedElement.borderColor || '#000000'}
-                          onChange={(e) => scheduleUpdate('imageBorderColor', () => handleUpdateElement(selectedElement.id, { borderColor: e.target.value }), 60)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('imageBorderColor', () => handleUpdateElement(selectedElement.id, { borderColor: val }), 60);
+                          }}
                         />
                         <TextField
                           label="Lebar Border (px)"
@@ -1490,7 +1525,10 @@ const Certificates = () => {
                           label="Warna"
                           type="color"
                           value={selectedElement.shadowColor || '#000000'}
-                          onChange={(e) => scheduleUpdate('imageShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: e.target.value }), 60)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('imageShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: val }), 60);
+                          }}
                         />
                         <TextField
                           label="Blur"
@@ -1671,7 +1709,7 @@ const Certificates = () => {
                                   x={(element.x || 0) - (element.bgPadding || 0)}
                                   y={(element.y || 0) - (element.bgPadding || 0)}
                                   width={(element.width || 200) + 2 * (element.bgPadding || 0)}
-                                  height={(element.fontSize ? element.fontSize * 1.3 : 32) + 2 * (element.bgPadding || 0)}
+                                  height={(element.fontSize ? element.fontSize * (element.lineHeight || 1) : 32) + 2 * (element.bgPadding || 0)}
                                   fill={element.bgColor}
                                   cornerRadius={element.bgRadius || 0}
                                   listening={false}
@@ -1689,6 +1727,7 @@ const Certificates = () => {
                                 align={element.align || 'left'}
                                 verticalAlign={element.verticalAlign || 'top'}
                                 width={element.width || 200}
+                                lineHeight={element.lineHeight || 1}
                                 rotation={element.rotation || 0}
                                 ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
                                 shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
