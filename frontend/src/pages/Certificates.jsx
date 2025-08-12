@@ -423,9 +423,6 @@ const Certificates = () => {
   };
 
   const handleAddText = () => {
-    // Base y position for the text
-    const baseY = 100;
-
     const newText = {
       id: Date.now().toString(),
       type: 'text',
@@ -443,13 +440,7 @@ const Certificates = () => {
       width: 200, // Set default width for proper alignment
       wordWrap: textProperties.wordWrap,
       lineHeight: textProperties.lineHeight,
-      draggable: true,
-      // Store original Y position for anchor reference
-      // For bottom alignment, this will be the bottom edge position
-      // For middle alignment, this will be the center position
-      // For top alignment, this will be the top edge position (same as y)
-      _originalY: baseY,
-      _measuredHeight: textProperties.fontSize * (textProperties.lineHeight || 1) // Initial height estimate
+      draggable: true
     };
     setElements([...elements, newText]);
   };
@@ -551,28 +542,6 @@ const Certificates = () => {
     // Update elements array with change detection to prevent unnecessary re-renders
     setElements(prev => prev.map(el => {
       if (el.id !== id) return el;
-
-      // If y position is being updated and this is a text element,
-      // we need to update the _originalY reference point accordingly
-      if (updates.y !== undefined && el.type === 'text') {
-        // Handle updating the originalY reference based on vertical alignment
-        // For bottom alignment: _originalY should be the bottom edge
-        // For middle alignment: _originalY should be the center
-        // For top alignment: _originalY is the same as y
-        const currentHeight = el._measuredHeight || (el.fontSize * (el.lineHeight || 1));
-
-        if (el.verticalAlign === 'bottom') {
-          // For bottom-aligned text, _originalY is the bottom edge position
-          updates._originalY = updates.y;
-        } else if (el.verticalAlign === 'middle') {
-          // For middle-aligned text, _originalY is the center position
-          updates._originalY = updates.y;
-        } else {
-          // For top-aligned text, _originalY is the same as y
-          updates._originalY = updates.y;
-        }
-      }
-
       // shallow compare updates
       let changed = false;
       for (const k in updates) {
@@ -609,52 +578,7 @@ const Certificates = () => {
     }
     setTextProperties(prev => ({ ...prev, [property]: value }));
     if (selectedElement && selectedElement.type === 'text') {
-      // Handle vertical alignment changes specially
-      if (property === 'verticalAlign') {
-        const node = shapeRefs.current[selectedElement.id];
-        if (node) {
-          // Get current height and position
-          const currentHeight = selectedElement._measuredHeight ||
-            (selectedElement.fontSize * (selectedElement.lineHeight || 1));
-          const currentY = selectedElement.y || 0;
-
-          // Calculate new position based on new vertical alignment
-          let newY = currentY;
-
-          if (value === 'bottom') {
-            // For bottom alignment, reference point should be the current bottom edge
-            const bottom = currentY + currentHeight;
-            newY = bottom - currentHeight; // Same as currentY in this case
-            // The _originalY should be the bottom edge position
-            handleUpdateElement(selectedElement.id, {
-              [property]: value,
-              _originalY: bottom
-            });
-          } else if (value === 'middle') {
-            // For middle alignment, reference point is the current vertical center
-            const center = currentY + currentHeight / 2;
-            // The _originalY should be the center position
-            handleUpdateElement(selectedElement.id, {
-              [property]: value,
-              _originalY: center
-            });
-          } else {
-            // For top alignment, reference point is just the top position
-            // The _originalY should be the same as y
-            handleUpdateElement(selectedElement.id, {
-              [property]: value,
-              _originalY: currentY
-            });
-          }
-        } else {
-          // If node not available, just update the property
-          handleUpdateElement(selectedElement.id, { [property]: value });
-        }
-      } else {
-        // For other properties, just update normally
-        handleUpdateElement(selectedElement.id, { [property]: value });
-      }
-
+      handleUpdateElement(selectedElement.id, { [property]: value });
       if (property === 'wordWrap') {
         // After DOM update, if we turned wrapping off, optionally expand width to natural text width
         if (value === false) {
@@ -775,54 +699,23 @@ const Certificates = () => {
       if (el.type !== 'text') return;
       const node = shapeRefs.current[el.id];
       if (!node) return;
-
-      // Get the actual height of the text when rendered
+      // Use client rect height for more accurate multi-line measurement
       const newH = node.getClientRect ? node.getClientRect().height : node.height();
-
-      // If this is the first measurement or height changed significantly
       const prevH = el._measuredHeight || newH;
       if (Math.abs(newH - prevH) < 0.5) return; // ignore tiny diffs
-
-      // Calculate anchoring points based on vertical alignment
-      // For bottom alignment: we need to anchor the bottom edge of the text
-      // so that when text wraps, it expands upward from the bottom edge
       if (el.verticalAlign === 'bottom') {
-        // Reference point is the bottom of the text
-        // For bottom alignment: anchor = original y + original height
-        const bottom = el._originalY !== undefined ? el._originalY : (el.y || 0);
+        // keep bottom position stable: oldTop + oldH = bottom => newTop = bottom - newH
+        const bottom = (el.y || 0) + prevH; // since y currently stores top for all
         const newTop = bottom - newH;
-
-        // Store the original reference position if not already saved
-        const updates = {
-          y: newTop,
-          _measuredHeight: newH,
-          // Keep track of the original bottom position if not already set
-          _originalY: el._originalY !== undefined ? el._originalY : bottom
-        };
-
-        batch.push({ id: el.id, updates });
+        batch.push({ id: el.id, updates: { y: newTop, _measuredHeight: newH } });
       } else if (el.verticalAlign === 'middle') {
-        // For middle alignment: anchor = original y + original height/2
-        const center = el._originalY !== undefined ? el._originalY : ((el.y || 0) + prevH / 2);
+        // keep center stable: center = top + oldH/2 => newTop = center - newH/2
+        const center = (el.y || 0) + prevH / 2;
         const newTop = center - newH / 2;
-
-        const updates = {
-          y: newTop,
-          _measuredHeight: newH,
-          // Keep track of the original center position if not already set
-          _originalY: el._originalY !== undefined ? el._originalY : center
-        };
-
-        batch.push({ id: el.id, updates });
+        batch.push({ id: el.id, updates: { y: newTop, _measuredHeight: newH } });
       } else {
-        // For top alignment: just record measured height, position stays the same
-        const updates = {
-          _measuredHeight: newH,
-          // For top alignment, original Y is the top position
-          _originalY: el._originalY !== undefined ? el._originalY : (el.y || 0)
-        };
-
-        batch.push({ id: el.id, updates });
+        // top: just record measured height
+        batch.push({ id: el.id, updates: { _measuredHeight: newH } });
       }
     });
     if (batch.length) {
@@ -1890,7 +1783,7 @@ const Certificates = () => {
                                   x={(element.x || 0) - (element.bgPadding || 0)}
                                   y={(element.y || 0) - (element.bgPadding || 0)}
                                   width={(element.width || 200) + 2 * (element.bgPadding || 0)}
-                                  height={(element._measuredHeight || (element.fontSize ? element.fontSize * (element.lineHeight || 1) : 32)) + 2 * (element.bgPadding || 0)}
+                                  height={(element.fontSize ? element.fontSize * (element.lineHeight || 1) : 32) + 2 * (element.bgPadding || 0)}
                                   fill={element.bgColor}
                                   cornerRadius={element.bgRadius || 0}
                                   listening={false}
@@ -1909,7 +1802,6 @@ const Certificates = () => {
                                 width={element.width || 200}
                                 lineHeight={element.lineHeight || 1}
                                 wrap={element.wordWrap === false ? 'none' : 'word'}
-                                verticalAlign={element.verticalAlign || 'top'}
                                 rotation={element.rotation || 0}
                                 ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
                                 shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}

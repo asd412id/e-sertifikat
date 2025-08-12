@@ -3,6 +3,7 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 // Removed unused locale import
 
 class PuppeteerPDFService {
@@ -482,9 +483,9 @@ class PuppeteerPDFService {
 
             // Kompensasi kecil agar posisi teks PDF sejajar dengan Konva (baseline metrics berbeda)
             const fs = element.fontSize || 24;
-            let offsetY = -1 - Math.floor(fs / 20); // basis (sekitar -1..-3)
+            let offsetY = -1 - Math.floor((fs >= 24 ? fs / 19 : 0)); // basis (sekitar -1..-3)
             if (element.verticalAlign === 'middle') offsetY -= 1; // sedikit ekstra
-            if (element.verticalAlign === 'bottom') offsetY -= -5;
+            if (element.verticalAlign === 'bottom') offsetY -= Number(fs / 7).toFixed(3);
             styles.push(`top: ${baseY + offsetY}px`);
 
             // Text alignment
@@ -874,6 +875,22 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
     const { googleFonts, families } = this._buildGoogleFontsQuery(template);
     if (!googleFonts.length) return '';
 
+    // Build a stable key for the requested font families/variants so we can cache processed CSS
+    const queryKey = googleFonts.slice().sort().join('|');
+    const hash = crypto.createHash('md5').update(queryKey).digest('hex');
+    const fontsRoot = path.join(__dirname, '..', 'fonts');
+    const cacheCssPath = path.join(fontsRoot, `cache_${hash}.css`);
+
+    try {
+      // If cached CSS exists, return it immediately (fast path)
+      if (fsSync.existsSync(cacheCssPath)) {
+        const cached = await fs.readFile(cacheCssPath, 'utf8');
+        if (cached && cached.length > 0) {
+          return cached;
+        }
+      }
+    } catch (_) { /* ignore cache read errors */ }
+
     // Build primary query (may contain weights/ital variants)
     let fontsQuery = googleFonts.join('&family=');
     let cssUrl = `https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap`;
@@ -892,7 +909,6 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
     }
 
     // Ensure fonts directory exists
-    const fontsRoot = path.join(__dirname, '..', 'fonts');
     await fs.mkdir(fontsRoot, { recursive: true });
 
     // Find all font URLs in CSS (woff2 preferred)
@@ -936,6 +952,11 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
         return block.replace(/}\s*$/, '  font-display: swap;\n}');
       });
     } catch (_) { /* noop */ }
+
+    // Persist processed CSS to cache for subsequent requests
+    try {
+      await fs.writeFile(cacheCssPath, localCss, 'utf8');
+    } catch (_) { /* ignore write errors */ }
 
     return localCss;
   } catch (e) {
