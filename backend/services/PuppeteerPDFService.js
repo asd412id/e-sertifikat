@@ -480,8 +480,12 @@ class PuppeteerPDFService {
             // 29. Different text rendering text rendering text rendering
             // 30. Different text rendering text rendering text rendering
 
-            // Gunakan koordinat top persis seperti di editor (tanpa kompensasi PDF)
-            styles.push(`top: ${baseY}px`);
+            // Kompensasi kecil agar posisi teks PDF sejajar dengan Konva (baseline metrics berbeda)
+            const fs = element.fontSize || 24;
+            let offsetY = -1 - Math.floor(fs / 20); // basis (sekitar -1..-3)
+            if (element.verticalAlign === 'middle') offsetY -= 1; // sedikit ekstra
+            if (element.verticalAlign === 'bottom') offsetY -= -5;
+            styles.push(`top: ${baseY + offsetY}px`);
 
             // Text alignment
             if (element.align) styles.push(`text-align: ${element.align}`);
@@ -590,8 +594,8 @@ class PuppeteerPDFService {
               const bgStyles = [
                 'position: absolute',
                 `left: ${baseX - pad}px`,
-                // subtract pad on y too for symmetry (tanpa pdfCompensation)
-                `top: ${baseY - pad}px`,
+                // top termasuk kompensasi offsetY
+                `top: ${baseY + offsetY - pad}px`,
                 `width: ${width + pad * 2}px`,
                 `height: ${height + pad * 2}px`,
                 `background: ${element.bgColor}`,
