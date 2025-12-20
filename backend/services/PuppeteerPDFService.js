@@ -456,8 +456,13 @@ class PuppeteerPDFService {
 
             // Apply font family with fallbacks
             if (element.fontFamily) {
-              const cleanFontFamily = element.fontFamily.replace(/['"]/g, '').trim();
+              let cleanFontFamily = element.fontFamily.replace(/['"]/g, '').trim();
 
+              // Brush Script MT is a proprietary Windows font and is often unavailable
+              // in headless/server environments (Linux). Map it to a consistent web font.
+              if (cleanFontFamily === 'Brush Script MT') {
+                cleanFontFamily = 'Pacifico';
+              }
               // Use the pre-defined CSS font-family mapping first
               if (cssFontFamilyMap[cleanFontFamily]) {
                 styles.push(`font-family: ${cssFontFamilyMap[cleanFontFamily]}`);
@@ -544,7 +549,7 @@ class PuppeteerPDFService {
             // Apply a small global upward nudge, then apply mild, additive adjustments by font size.
             let offsetY = -2.5;
             if (!element.wordWrap) {
-              if (fs >= 28) offsetY -= 1;
+              if (fs >= 28) offsetY -= 0;
               if (fs >= 40) offsetY -= 1.5;
               if (fs >= 56) offsetY -= 2;
               // untuk middle, sedikit naik agar visually center tetap rapih
@@ -894,7 +899,14 @@ PuppeteerPDFService.prototype._buildGoogleFontsQuery = function (template) {
   if (allObjects.length) {
     for (const el of allObjects) {
       if (el.type === 'text' && el.fontFamily) {
-        const fam = el.fontFamily.replace(/['"]/g, '').trim();
+        let fam = el.fontFamily.replace(/['"]/g, '').trim();
+
+        // Brush Script MT is usually not available in headless/server environments.
+        // Use a consistent Google Font alternative.
+        if (fam === 'Brush Script MT') {
+          fam = 'Pacifico';
+        }
+
         if (fam && !systemFonts.includes(fam)) {
           families.add(fam);
         }
@@ -922,7 +934,10 @@ PuppeteerPDFService.prototype._buildGoogleFontsQuery = function (template) {
   if (allObjects.length) {
     for (const el of allObjects) {
       if (el.type === 'text' && el.fontFamily) {
-        const fam = el.fontFamily.replace(/['"]/g, '').trim();
+        let fam = el.fontFamily.replace(/['"]/g, '').trim();
+        if (fam === 'Brush Script MT') {
+          fam = 'Pacifico';
+        }
         if (!families.has(fam)) continue;
 
         const variant = fontVariants.get(fam);
