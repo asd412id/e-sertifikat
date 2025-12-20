@@ -32,10 +32,14 @@ const DownloadCertificate = () => {
 
   const [portalInfo, setPortalInfo] = useState(null);
   const [identifier, setIdentifier] = useState('');
+  const [criteria, setCriteria] = useState({});
   const [searchResults, setSearchResults] = useState(null);
 
   const identifierLabel = portalInfo?.identifierLabel || portalInfo?.identifierField || 'Identitas';
   const matchMode = portalInfo?.matchMode || 'exact';
+  const searchFields = Array.isArray(portalInfo?.searchFields) && portalInfo.searchFields.length
+    ? portalInfo.searchFields
+    : [{ name: portalInfo?.identifierField, label: identifierLabel, matchMode, required: true }].filter(f => f.name);
 
   const title = useMemo(() => {
     if (portalInfo?.event?.title) return `Download Sertifikat - ${portalInfo.event.title}`;
@@ -80,14 +84,28 @@ const DownloadCertificate = () => {
       setError('');
       setSearchResults(null);
 
-      if (!identifier.trim()) {
+      // Validate required fields
+      for (const f of (searchFields || [])) {
+        if (!f?.name) continue;
+        const v = String((criteria && typeof criteria === 'object') ? (criteria[f.name] || '') : '').trim();
+        if (f.required && !v) {
+          setError(`Silakan isi ${String(f.label || f.name).toLowerCase()} terlebih dahulu`);
+          return;
+        }
+      }
+
+      // Legacy compatibility: allow single identifier if no searchFields defined
+      if ((!searchFields || searchFields.length === 0) && !identifier.trim()) {
         setError('Silakan isi identitas terlebih dahulu');
         return;
       }
 
       const response = await api.post(
         `/certificates/public/${slug}/search`,
-        { identifier: identifier.trim() },
+        {
+          identifier: identifier.trim(),
+          criteria
+        },
         { timeout: 30000 }
       );
 
@@ -131,7 +149,10 @@ const DownloadCertificate = () => {
 
       const response = await api.post(
         `/certificates/public/${slug}/participants/${participant.id}/download-pdf`,
-        { identifier: identifier.trim() },
+        {
+          identifier: identifier.trim(),
+          criteria
+        },
         {
           responseType: 'blob',
           timeout: 300000
@@ -239,33 +260,55 @@ const DownloadCertificate = () => {
                   </Box>
                 ) : (
                   <>
+                    {error && !(searchResults && Array.isArray(searchResults.results) && searchResults.results.length === 0) && (
+                      <Alert severity="error" sx={{ borderRadius: 2, mb: 2 }} icon={<ErrorOutline />}>
+                        {error}
+                      </Alert>
+                    )}
+
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Masukkan {identifierLabel.toLowerCase()} sesuai yang diminta panitia, lalu pilih data yang benar untuk mengunduh sertifikat.
+                      Masukkan data sesuai yang diminta panitia, lalu pilih data yang benar untuk mengunduh sertifikat.
                     </Typography>
 
                     <Box component="form" onSubmit={handleSearch}>
                       <Stack spacing={2.5}>
-                        <TextField
-                          fullWidth
-                          label={identifierLabel}
-                          helperText={matchMode === 'fuzzy'
-                            ? `Pencarian mirip: bisa muncul beberapa hasil. Ketik ${identifierLabel.toLowerCase()} sebagian, lalu pilih yang benar.`
-                            : `Pencarian sama persis: pastikan ${identifierLabel.toLowerCase()} sesuai.`}
-                          value={identifier}
-                          onChange={(e) => setIdentifier(e.target.value)}
-                          disabled={searching || !!downloadingId}
-                          InputProps={{
-                            startAdornment: <BadgeOutlined sx={{ mr: 1, color: 'text.secondary' }} />
-                          }}
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: 2,
-                              backgroundColor: 'rgba(0,0,0,0.02)',
-                              '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' },
-                              '&.Mui-focused': { backgroundColor: 'transparent' },
-                            },
-                          }}
-                        />
+                        {(searchFields && searchFields.length ? searchFields : []).map((f) => (
+                          <TextField
+                            key={f.name}
+                            fullWidth
+                            label={f.label || f.name}
+                            placeholder={(() => {
+                              const base = String(f.label || f.name).toLowerCase();
+                              return f.matchMode === 'fuzzy'
+                                ? `Ketik ${base}...`
+                                : `Masukkan ${base}...`;
+                            })()}
+                            helperText={f.matchMode === 'fuzzy'
+                              ? `Pencarian mirip: bisa muncul beberapa hasil. Ketik ${String(f.label || f.name).toLowerCase()} sebagian, lalu pilih yang benar.`
+                              : `Pencarian sama persis: pastikan ${String(f.label || f.name).toLowerCase()} sesuai.`}
+                            value={String((criteria && typeof criteria === 'object') ? (criteria[f.name] || '') : '')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCriteria((prev) => ({ ...(prev && typeof prev === 'object' ? prev : {}), [f.name]: val }));
+                              // keep legacy single identifier for compatibility (first field)
+                              if ((searchFields?.[0]?.name || portalInfo?.identifierField) === f.name) {
+                                setIdentifier(val);
+                              }
+                            }}
+                            disabled={searching || !!downloadingId}
+                            InputProps={{
+                              startAdornment: <BadgeOutlined sx={{ mr: 1, color: 'text.secondary' }} />
+                            }}
+                            sx={{
+                              '& .MuiOutlinedInput-root': {
+                                borderRadius: 2,
+                                backgroundColor: 'rgba(0,0,0,0.02)',
+                                '&:hover': { backgroundColor: 'rgba(0,0,0,0.04)' },
+                                '&.Mui-focused': { backgroundColor: 'transparent' },
+                              },
+                            }}
+                          />
+                        ))}
 
                         <Button
                           type="submit"

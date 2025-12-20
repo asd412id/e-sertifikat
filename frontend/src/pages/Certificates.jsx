@@ -208,11 +208,13 @@ const Certificates = () => {
     enabled: false,
     identifierField: '',
     matchMode: 'exact',
+    searchFields: [],
     templateId: '',
     regenerateSlug: false,
     slug: '',
     resultFields: []
   });
+  const [publicSettingsOpen, setPublicSettingsOpen] = useState(false);
   const [savingPublicSettings, setSavingPublicSettings] = useState(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -393,6 +395,11 @@ const Certificates = () => {
         enabled: !!ev.publicDownloadEnabled,
         identifierField: ev.publicDownloadIdentifierField || '',
         matchMode: ev.publicDownloadMatchMode || 'exact',
+        searchFields: Array.isArray(ev.publicDownloadSearchFields) && ev.publicDownloadSearchFields.length
+          ? ev.publicDownloadSearchFields
+          : (ev.publicDownloadIdentifierField
+            ? [{ name: ev.publicDownloadIdentifierField, matchMode: ev.publicDownloadMatchMode || 'exact', required: true }]
+            : []),
         templateId: ev.publicDownloadTemplateId ? String(ev.publicDownloadTemplateId) : '',
         regenerateSlug: false,
         slug: ev.publicDownloadSlug || '',
@@ -432,6 +439,7 @@ const Certificates = () => {
         enabled: publicDownloadSettings.enabled,
         identifierField: publicDownloadSettings.identifierField,
         matchMode: publicDownloadSettings.matchMode,
+        searchFields: publicDownloadSettings.searchFields,
         templateId: publicDownloadSettings.templateId ? parseInt(publicDownloadSettings.templateId) : null,
         regenerateSlug: publicDownloadSettings.regenerateSlug,
         slug: publicDownloadSettings.slug,
@@ -443,6 +451,7 @@ const Certificates = () => {
       setEvent(updated);
       setPublicDownloadSettings(prev => ({ ...prev, regenerateSlug: false, slug: updated.publicDownloadSlug || prev.slug }));
       toast.success('Pengaturan link download berhasil disimpan');
+      setPublicSettingsOpen(false);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Gagal menyimpan pengaturan');
     } finally {
@@ -1368,18 +1377,27 @@ const Certificates = () => {
                 Link Download Sertifikat (Publik)
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Bagikan link ini ke peserta. Peserta mengisi identitas sesuai kolom yang kamu pilih.
+                Bagikan link ini ke peserta.
               </Typography>
             </Box>
-            <Button
-              variant="outlined"
-              startIcon={<ContentCopy />}
-              onClick={handleCopyPublicLink}
-              disabled={!event?.publicDownloadSlug}
-              sx={{ borderRadius: 2 }}
-            >
-              Copy Link
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                startIcon={<ContentCopy />}
+                onClick={handleCopyPublicLink}
+                disabled={!event?.publicDownloadSlug}
+                sx={{ borderRadius: 2 }}
+              >
+                Copy Link
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => setPublicSettingsOpen(true)}
+                sx={{ borderRadius: 2 }}
+              >
+                Pengaturan
+              </Button>
+            </Stack>
           </Box>
 
           <Box mt={2}>
@@ -1390,133 +1408,257 @@ const Certificates = () => {
               InputProps={{ readOnly: true, startAdornment: <LinkIcon sx={{ mr: 1, color: 'text.secondary' }} /> }}
             />
           </Box>
-
-          <Divider sx={{ my: 3 }} />
-
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} md={3}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={publicDownloadSettings.enabled}
-                    onChange={(e) => setPublicDownloadSettings(s => ({ ...s, enabled: e.target.checked }))}
-                  />
-                }
-                label="Aktifkan"
-              />
-            </Grid>
-
-            <Grid item xs={12} md={9}>
-              <TextField
-                fullWidth
-                label="Slug (Opsional)"
-                placeholder="contoh: bimtek-2025"
-                value={publicDownloadSettings.slug}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setPublicDownloadSettings(s => ({ ...s, slug: val, regenerateSlug: false }));
-                }}
-                disabled={!publicDownloadSettings.enabled}
-                helperText="Kosongkan untuk auto-generate. Format: huruf kecil/angka dan '-' (tanpa spasi)."
-              />
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Kolom Identitas</InputLabel>
-                <Select
-                  label="Kolom Identitas"
-                  value={publicDownloadSettings.identifierField}
-                  onChange={(e) => setPublicDownloadSettings(s => ({ ...s, identifierField: e.target.value }))}
-                  disabled={!publicDownloadSettings.enabled}
-                >
-                  {(event?.participantFields || []).map((f) => (
-                    <MenuItem key={f.name} value={f.name}>{f.label} ({f.name})</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Mode Pencarian</InputLabel>
-                <Select
-                  label="Mode Pencarian"
-                  value={publicDownloadSettings.matchMode}
-                  onChange={(e) => setPublicDownloadSettings(s => ({ ...s, matchMode: e.target.value }))}
-                  disabled={!publicDownloadSettings.enabled}
-                >
-                  <MenuItem value="exact">Sama Persis (Exact)</MenuItem>
-                  <MenuItem value="fuzzy">Mirip (Fuzzy)</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Template Default</InputLabel>
-                <Select
-                  label="Template Default"
-                  value={publicDownloadSettings.templateId}
-                  onChange={(e) => setPublicDownloadSettings(s => ({ ...s, templateId: e.target.value }))}
-                  disabled={!publicDownloadSettings.enabled}
-                >
-                  {templates.map((t) => (
-                    <MenuItem key={t.id} value={String(t.id)}>{t.name}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Info yang Ditampilkan</InputLabel>
-                <Select
-                  label="Info yang Ditampilkan"
-                  multiple
-                  value={publicDownloadSettings.resultFields}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setPublicDownloadSettings(s => ({ ...s, resultFields: Array.isArray(val) ? val : [] }));
-                  }}
-                  disabled={!publicDownloadSettings.enabled}
-                  renderValue={(selected) => {
-                    const all = Array.isArray(event?.participantFields) ? event.participantFields : [];
-                    const map = new Map(all.map(f => [f?.name, f?.label || f?.name]));
-                    return (Array.isArray(selected) ? selected : []).map((n) => map.get(n) || n).join(', ');
-                  }}
-                >
-                  {(event?.participantFields || []).map((f) => (
-                    <MenuItem key={f.name} value={f.name}>{f.label} ({f.name})</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={publicDownloadSettings.regenerateSlug}
-                    onChange={(e) => setPublicDownloadSettings(s => ({ ...s, regenerateSlug: e.target.checked, slug: e.target.checked ? '' : s.slug }))}
-                    disabled={!publicDownloadSettings.enabled}
-                  />
-                }
-                label="Generate ulang link (slug)"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Box display="flex" justifyContent={{ xs: 'flex-start', md: 'flex-end' }} gap={1}>
-                <Button
-                  variant="contained"
-                  startIcon={savingPublicSettings ? <CircularProgress size={18} color="inherit" /> : <Save />}
-                  onClick={handleSavePublicDownloadSettings}
-                  disabled={savingPublicSettings}
-                >
-                  Simpan Pengaturan
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
         </Paper>
+
+        <Dialog
+          open={publicSettingsOpen}
+          onClose={() => setPublicSettingsOpen(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                Pengaturan Link Download (Publik)
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Atur field pencarian, mode match, dan info hasil yang ditampilkan.
+              </Typography>
+            </Box>
+            <Button onClick={() => setPublicSettingsOpen(false)} sx={{ borderRadius: 2 }}>
+              Tutup
+            </Button>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Stack spacing={2} sx={{ mt: 0.5 }}>
+              <Box>
+                <Stack spacing={1.25}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={publicDownloadSettings.enabled}
+                        onChange={(e) => setPublicDownloadSettings(s => ({ ...s, enabled: e.target.checked }))}
+                      />
+                    }
+                    label="Aktifkan"
+                  />
+
+                  <TextField
+                    fullWidth
+                    label="Slug (Opsional)"
+                    placeholder="contoh: bimtek-2025"
+                    value={publicDownloadSettings.slug}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPublicDownloadSettings(s => ({ ...s, slug: val, regenerateSlug: false }));
+                    }}
+                    disabled={!publicDownloadSettings.enabled}
+                    helperText="Kosongkan untuk auto-generate. Format: huruf kecil/angka dan '-' (tanpa spasi)."
+                    size="small"
+                  />
+                </Stack>
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                  Kolom Pencarian (Peserta)
+                </Typography>
+                <Stack spacing={2}>
+                  {(publicDownloadSettings.searchFields || []).map((sf, idx) => (
+                    <Box
+                      key={`${sf?.name || 'field'}-${idx}`}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 130px 86px 34px',
+                        gap: 1,
+                        alignItems: 'center'
+                      }}
+                    >
+                      <FormControl fullWidth>
+                        <InputLabel>Kolom</InputLabel>
+                        <Select
+                          label="Kolom"
+                          value={sf?.name || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPublicDownloadSettings(s => {
+                              const next = Array.isArray(s.searchFields) ? [...s.searchFields] : [];
+                              next[idx] = { ...(next[idx] || {}), name: val };
+                              const legacy = idx === 0 ? { identifierField: val } : {};
+                              return { ...s, ...legacy, searchFields: next };
+                            });
+                          }}
+                          disabled={!publicDownloadSettings.enabled}
+                          size="small"
+                        >
+                          {(event?.participantFields || []).map((f) => (
+                            <MenuItem key={f.name} value={f.name}>{f.label} ({f.name})</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <FormControl fullWidth>
+                        <InputLabel>Mode</InputLabel>
+                        <Select
+                          label="Mode"
+                          value={sf?.matchMode || 'exact'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPublicDownloadSettings(s => {
+                              const next = Array.isArray(s.searchFields) ? [...s.searchFields] : [];
+                              next[idx] = { ...(next[idx] || {}), matchMode: val };
+                              const legacy = idx === 0 ? { matchMode: val } : {};
+                              return { ...s, ...legacy, searchFields: next };
+                            });
+                          }}
+                          disabled={!publicDownloadSettings.enabled}
+                          size="small"
+                        >
+                          <MenuItem value="exact">Exact</MenuItem>
+                          <MenuItem value="fuzzy">Fuzzy</MenuItem>
+                        </Select>
+                      </FormControl>
+
+                      <Tooltip title="Wajib diisi" placement="top">
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Checkbox
+                            size="small"
+                            checked={sf?.required !== false}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPublicDownloadSettings(s => {
+                                const next = Array.isArray(s.searchFields) ? [...s.searchFields] : [];
+                                next[idx] = { ...(next[idx] || {}), required: checked };
+                                return { ...s, searchFields: next };
+                              });
+                            }}
+                            disabled={!publicDownloadSettings.enabled}
+                          />
+                        </Box>
+                      </Tooltip>
+
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setPublicDownloadSettings(s => {
+                            const cur = Array.isArray(s.searchFields) ? s.searchFields : [];
+                            const next = cur.filter((_, i) => i !== idx);
+                            const first = next[0];
+                            return {
+                              ...s,
+                              searchFields: next,
+                              identifierField: first?.name || s.identifierField,
+                              matchMode: first?.matchMode || s.matchMode
+                            };
+                          });
+                        }}
+                        disabled={!publicDownloadSettings.enabled || (publicDownloadSettings.searchFields || []).length <= 1}
+                        sx={{ border: '1px solid', borderColor: 'divider', width: 34, height: 34 }}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+
+                  <Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        setPublicDownloadSettings(s => {
+                          const cur = Array.isArray(s.searchFields) ? [...s.searchFields] : [];
+                          const fallbackName = (event?.participantFields || [])[0]?.name || '';
+                          cur.push({ name: fallbackName, matchMode: 'exact', required: true });
+                          if (!s.identifierField && cur[0]?.name) {
+                            return { ...s, identifierField: cur[0].name, matchMode: cur[0].matchMode, searchFields: cur };
+                          }
+                          return { ...s, searchFields: cur };
+                        });
+                      }}
+                      disabled={!publicDownloadSettings.enabled}
+                      sx={{ borderRadius: 2 }}
+                    >
+                      Tambah Kolom
+                    </Button>
+                  </Box>
+                </Stack>
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Stack spacing={2}>
+                  <FormControl fullWidth>
+                    <InputLabel>Template Default</InputLabel>
+                    <Select
+                      label="Template Default"
+                      value={publicDownloadSettings.templateId}
+                      onChange={(e) => setPublicDownloadSettings(s => ({ ...s, templateId: e.target.value }))}
+                      disabled={!publicDownloadSettings.enabled}
+                      size="small"
+                    >
+                      {templates.map((t) => (
+                        <MenuItem key={t.id} value={String(t.id)}>{t.name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth>
+                    <InputLabel>Info yang Ditampilkan</InputLabel>
+                    <Select
+                      label="Info yang Ditampilkan"
+                      multiple
+                      value={publicDownloadSettings.resultFields}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPublicDownloadSettings(s => ({ ...s, resultFields: Array.isArray(val) ? val : [] }));
+                      }}
+                      disabled={!publicDownloadSettings.enabled}
+                      size="small"
+                      renderValue={(selected) => {
+                        const all = Array.isArray(event?.participantFields) ? event.participantFields : [];
+                        const map = new Map(all.map(f => [f?.name, f?.label || f?.name]));
+                        return (Array.isArray(selected) ? selected : []).map((n) => map.get(n) || n).join(', ');
+                      }}
+                    >
+                      {(event?.participantFields || []).map((f) => (
+                        <MenuItem key={f.name} value={f.name}>{f.label} ({f.name})</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={publicDownloadSettings.regenerateSlug}
+                        onChange={(e) => setPublicDownloadSettings(s => ({ ...s, regenerateSlug: e.target.checked, slug: e.target.checked ? '' : s.slug }))}
+                        disabled={!publicDownloadSettings.enabled}
+                      />
+                    }
+                    label="Generate ulang link (slug)"
+                  />
+                </Stack>
+              </Box>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setPublicSettingsOpen(false)} sx={{ borderRadius: 2 }}>
+              Batal
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={savingPublicSettings ? <CircularProgress size={18} color="inherit" /> : <Save />}
+              onClick={handleSavePublicDownloadSettings}
+              disabled={savingPublicSettings}
+              sx={{ borderRadius: 2 }}
+            >
+              Simpan Pengaturan
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {templates.length === 0 ? (
           <Paper elevation={0} sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 3 }}>

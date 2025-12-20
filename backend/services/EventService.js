@@ -66,7 +66,101 @@ class EventService {
         throw new Error('Event not found');
       }
 
-      await event.update(eventData);
+      const updateData = { ...eventData };
+
+      // Normalize participantFields if provided
+      if (Object.prototype.hasOwnProperty.call(updateData, 'participantFields')) {
+        const fields = Array.isArray(updateData.participantFields) ? updateData.participantFields : [];
+        if (!fields.length) {
+          throw new Error('participantFields must contain at least 1 field');
+        }
+
+        const normalized = fields
+          .map((f) => ({
+            name: String(f?.name || '').trim(),
+            label: String(f?.label || '').trim(),
+            type: (f?.type === 'email' || f?.type === 'number') ? f.type : 'text',
+            required: !!f?.required
+          }))
+          .filter((f) => f.name && f.label);
+
+        if (!normalized.length) {
+          throw new Error('participantFields must contain at least 1 valid field');
+        }
+
+        // Validate names
+        const nameRe = /^[a-zA-Z0-9_]+$/;
+        for (const f of normalized) {
+          if (!nameRe.test(f.name)) {
+            throw new Error(`Invalid participant field name: ${f.name}`);
+          }
+        }
+
+        // Ensure unique names
+        const seen = new Set();
+        for (const f of normalized) {
+          if (seen.has(f.name)) {
+            throw new Error(`Duplicate participant field name: ${f.name}`);
+          }
+          seen.add(f.name);
+        }
+
+        updateData.participantFields = normalized;
+
+        // Adjust dependent public download configs so portal doesn't break when fields are removed.
+        const allowed = new Set(normalized.map((f) => f.name));
+
+        // searchFields
+        let nextSearchFields = Array.isArray(event.publicDownloadSearchFields)
+          ? event.publicDownloadSearchFields
+            .map((f) => ({
+              name: String(f?.name || '').trim(),
+              matchMode: (f?.matchMode === 'fuzzy' ? 'fuzzy' : 'exact'),
+              required: f?.required !== false
+            }))
+            .filter((f) => f.name && allowed.has(f.name))
+          : null;
+        if (nextSearchFields && nextSearchFields.length === 0) nextSearchFields = null;
+
+        // resultFields
+        let nextResultFields = Array.isArray(event.publicDownloadResultFields)
+          ? event.publicDownloadResultFields.filter((n) => typeof n === 'string' && allowed.has(n))
+          : null;
+        if (nextResultFields && nextResultFields.length === 0) nextResultFields = null;
+
+        // identifierField
+        let nextIdentifierField = event.publicDownloadIdentifierField;
+        let nextMatchMode = event.publicDownloadMatchMode || 'exact';
+        if (nextSearchFields?.length) {
+          nextIdentifierField = nextSearchFields[0].name;
+          nextMatchMode = nextSearchFields[0].matchMode || nextMatchMode;
+        } else if (nextIdentifierField && !allowed.has(nextIdentifierField)) {
+          // fallback to first available field
+          nextIdentifierField = normalized[0]?.name || null;
+          nextMatchMode = 'exact';
+        }
+
+        if (event.publicDownloadEnabled) {
+          // If identifier becomes invalid, disable the portal to avoid broken public searches.
+          if (!nextIdentifierField) {
+            updateData.publicDownloadEnabled = false;
+            updateData.publicDownloadIdentifierField = null;
+            updateData.publicDownloadSearchFields = null;
+            updateData.publicDownloadResultFields = null;
+          } else {
+            updateData.publicDownloadIdentifierField = nextIdentifierField;
+            updateData.publicDownloadMatchMode = nextMatchMode;
+            updateData.publicDownloadSearchFields = nextSearchFields;
+            updateData.publicDownloadResultFields = nextResultFields;
+          }
+        } else {
+          // Keep configs consistent even if portal currently disabled
+          updateData.publicDownloadSearchFields = nextSearchFields;
+          updateData.publicDownloadResultFields = nextResultFields;
+        }
+      }
+
+      await event.update(updateData);
       return event;
     } catch (error) {
       throw error;
@@ -90,8 +184,11 @@ class EventService {
         templateId,
         regenerateSlug,
         slug: manualSlug,
-        resultFields
+        resultFields,
+        searchFields
       } = settings || {};
+
+      let normalizedSearchFields = null;
 
       if (typeof enabled !== 'boolean') {
         throw new Error('enabled must be a boolean');
@@ -101,12 +198,42 @@ class EventService {
         const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
         const allowedFieldNames = fields.map(f => f?.name).filter(Boolean);
 
-        if (!identifierField || !allowedFieldNames.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
-          throw new Error('Invalid identifierField');
+        // Optional new-style search fields config
+        if (Array.isArray(searchFields) && searchFields.length > 0) {
+          normalizedSearchFields = searchFields
+            .map((f) => ({
+              name: String(f?.name || '').trim(),
+              matchMode: (f?.matchMode === 'fuzzy' ? 'fuzzy' : 'exact'),
+              required: f?.required !== false
+            }))
+            .filter((f) => f.name && allowedFieldNames.includes(f.name) && /^[a-zA-Z0-9_]+$/.test(f.name));
+
+          if (!normalizedSearchFields.length) {
+            throw new Error('Invalid searchFields');
+          }
+
+          // require at least 1 required field
+          if (!normalizedSearchFields.some((f) => f.required)) {
+            normalizedSearchFields[0].required = true;
+          }
+
+          // de-dup by name (keep first)
+          const seen = new Set();
+          normalizedSearchFields = normalizedSearchFields.filter((f) => {
+            if (seen.has(f.name)) return false;
+            seen.add(f.name);
+            return true;
+          });
         }
 
-        if (matchMode && !['exact', 'fuzzy'].includes(matchMode)) {
-          throw new Error('Invalid matchMode');
+        // Backward compatible single field validation if searchFields not provided
+        if (!normalizedSearchFields) {
+          if (!identifierField || !allowedFieldNames.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
+            throw new Error('Invalid identifierField');
+          }
+          if (matchMode && !['exact', 'fuzzy'].includes(matchMode)) {
+            throw new Error('Invalid matchMode');
+          }
         }
 
         if (!templateId || Number.isNaN(parseInt(templateId))) {
@@ -161,8 +288,15 @@ class EventService {
 
       await event.update({
         publicDownloadEnabled: enabled,
-        publicDownloadIdentifierField: enabled ? identifierField : null,
-        publicDownloadMatchMode: enabled ? (matchMode || 'exact') : event.publicDownloadMatchMode,
+        publicDownloadIdentifierField: enabled
+          ? (normalizedSearchFields?.[0]?.name || identifierField || event.publicDownloadIdentifierField)
+          : null,
+        publicDownloadMatchMode: enabled
+          ? (normalizedSearchFields?.[0]?.matchMode || matchMode || 'exact')
+          : event.publicDownloadMatchMode,
+        publicDownloadSearchFields: enabled
+          ? (normalizedSearchFields || null)
+          : null,
         publicDownloadTemplateId: enabled ? parseInt(templateId) : null,
         publicDownloadSlug: enabled ? slug : event.publicDownloadSlug,
         publicDownloadResultFields: enabled

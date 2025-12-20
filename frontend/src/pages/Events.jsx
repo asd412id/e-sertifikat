@@ -216,7 +216,16 @@ const Events = () => {
   };
 
   const handleRemoveField = (index) => {
-    const fields = formData.participantFields.filter((_, i) => i !== index);
+    const cur = Array.isArray(formData.participantFields) ? formData.participantFields : [];
+    if (cur.length <= 1) {
+      toast.error('Minimal harus ada 1 field peserta');
+      return;
+    }
+    const field = cur[index];
+    const label = field?.label || field?.name || 'field';
+    const ok = window.confirm(`Hapus field peserta "${label}"? Data peserta yang sudah ada tidak akan dihapus, namun kolom ini tidak lagi digunakan.`);
+    if (!ok) return;
+    const fields = cur.filter((_, i) => i !== index);
     setFormData({ ...formData, participantFields: fields });
   };
 
@@ -579,7 +588,6 @@ const Events = () => {
                             <IconButton
                               edge="end"
                               onClick={() => handleOpenEditField(index)}
-                              disabled={field.name === 'nama'}
                               sx={{ mr: 0.5 }}
                             >
                               <Edit />
@@ -587,7 +595,6 @@ const Events = () => {
                             <IconButton
                               edge="end"
                               onClick={() => handleRemoveField(index)}
-                              disabled={field.name === 'nama'} // Tidak boleh menghapus field nama
                               color="error"
                             >
                               <Delete />

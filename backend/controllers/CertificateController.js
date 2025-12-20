@@ -22,6 +22,7 @@ class CertificateController {
           'publicDownloadEnabled',
           'publicDownloadIdentifierField',
           'publicDownloadMatchMode',
+          'publicDownloadSearchFields',
           'participantFields',
           'publicDownloadResultFields'
         ]
@@ -39,15 +40,32 @@ class CertificateController {
         });
       }
 
-      if (!event.publicDownloadIdentifierField) {
+      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
+      const rawSearchFields = Array.isArray(event.publicDownloadSearchFields) ? event.publicDownloadSearchFields : null;
+      const searchFields = rawSearchFields
+        ? rawSearchFields
+          .map((f) => {
+            const name = String(f?.name || '').trim();
+            if (!name) return null;
+            const label = fields.find(x => x?.name === name)?.label || name;
+            return {
+              name,
+              label,
+              matchMode: f?.matchMode === 'fuzzy' ? 'fuzzy' : 'exact',
+              required: f?.required !== false
+            };
+          })
+          .filter(Boolean)
+        : null;
+
+      const identifierField = searchFields?.[0]?.name || event.publicDownloadIdentifierField;
+      if (!identifierField) {
         return reply.status(400).send({
           error: 'Portal is not configured (identifier field missing)'
         });
       }
-
-      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
-      const identifierLabel = fields.find(f => f?.name === event.publicDownloadIdentifierField)?.label
-        || event.publicDownloadIdentifierField;
+      const identifierLabel = fields.find(f => f?.name === identifierField)?.label
+        || identifierField;
       const resultFields = Array.isArray(event.publicDownloadResultFields)
         ? event.publicDownloadResultFields
         : null;
@@ -66,10 +84,10 @@ class CertificateController {
             id: event.id,
             title: event.title
           },
-          identifierField: event.publicDownloadIdentifierField,
+          identifierField,
           identifierLabel,
-          matchMode: event.publicDownloadMatchMode
-          ,
+          matchMode: searchFields?.[0]?.matchMode || event.publicDownloadMatchMode,
+          searchFields,
           resultFields,
           resultFieldLabels
         }
@@ -84,13 +102,7 @@ class CertificateController {
   async publicSearchParticipants(request, reply) {
     try {
       const { slug } = request.params;
-      const { identifier } = request.body || {};
-
-      if (!identifier || String(identifier).trim().length === 0) {
-        return reply.status(400).send({
-          error: 'Identifier is required'
-        });
-      }
+      const { identifier, criteria } = request.body || {};
 
       const event = await Event.findOne({
         where: {
@@ -111,40 +123,77 @@ class CertificateController {
         });
       }
 
-      if (!event.publicDownloadIdentifierField) {
+      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
+      const allowedFields = Array.isArray(event.participantFields)
+        ? event.participantFields.map(f => f?.name).filter(Boolean)
+        : [];
+
+      const searchFieldsCfg = Array.isArray(event.publicDownloadSearchFields) ? event.publicDownloadSearchFields : null;
+      const normalizedCfg = searchFieldsCfg
+        ? searchFieldsCfg
+          .map((f) => ({
+            name: String(f?.name || '').trim(),
+            matchMode: f?.matchMode === 'fuzzy' ? 'fuzzy' : 'exact',
+            required: f?.required !== false
+          }))
+          .filter((f) => f.name && allowedFields.includes(f.name) && /^[a-zA-Z0-9_]+$/.test(f.name))
+        : null;
+
+      if (!normalizedCfg?.length && !event.publicDownloadIdentifierField) {
         return reply.status(400).send({
           error: 'Portal is not configured (identifier field missing)'
         });
       }
 
-      const input = String(identifier).trim();
-      const identifierField = event.publicDownloadIdentifierField;
-      const matchMode = event.publicDownloadMatchMode || 'exact';
+      const inputCriteria = (criteria && typeof criteria === 'object') ? criteria : {};
 
-      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
+      let activeCriteria = [];
+      if (normalizedCfg && normalizedCfg.length) {
+        // multi-field mode
+        for (const f of normalizedCfg) {
+          const raw = inputCriteria?.[f.name];
+          const val = raw == null ? '' : String(raw).trim();
+          if (f.required && !val) {
+            return reply.status(400).send({ error: `Field ${f.name} is required` });
+          }
+          if (val) {
+            activeCriteria.push({ ...f, value: val });
+          }
+        }
+        if (!activeCriteria.length) {
+          return reply.status(400).send({ error: 'Criteria is required' });
+        }
+      } else {
+        // legacy single-field mode
+        if (!identifier || String(identifier).trim().length === 0) {
+          return reply.status(400).send({ error: 'Identifier is required' });
+        }
+        const identifierField = event.publicDownloadIdentifierField;
+        const matchMode = event.publicDownloadMatchMode || 'exact';
+        if (!identifierField || !allowedFields.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
+          return reply.status(400).send({ error: 'Portal is not configured (invalid identifier field)' });
+        }
+        activeCriteria = [{ name: identifierField, matchMode, required: true, value: String(identifier).trim() }];
+      }
+
+      const identifierField = activeCriteria?.[0]?.name || event.publicDownloadIdentifierField;
+      const matchMode = activeCriteria?.[0]?.matchMode || event.publicDownloadMatchMode || 'exact';
+
       const resultFields = Array.isArray(event.publicDownloadResultFields)
         ? event.publicDownloadResultFields
         : null;
 
-      const allowedFields = Array.isArray(event.participantFields)
-        ? event.participantFields.map(f => f?.name).filter(Boolean)
-        : [];
-      if (!identifierField || !allowedFields.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
-        return reply.status(400).send({
-          error: 'Portal is not configured (invalid identifier field)'
-        });
-      }
-
-      const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${identifierField}')`);
-      const loweredInput = input.toLowerCase();
+      const andConditions = activeCriteria.map((c) => {
+        const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${c.name}')`);
+        const loweredInput = String(c.value).toLowerCase();
+        return c.matchMode === 'fuzzy'
+          ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
+          : where(loweredExtract, { [Op.eq]: loweredInput });
+      });
 
       const participantWhere = {
         eventId: event.id,
-        [Op.and]: [
-          matchMode === 'fuzzy'
-            ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
-            : where(loweredExtract, { [Op.eq]: loweredInput })
-        ]
+        [Op.and]: andConditions
       };
 
       const participants = await Participant.findAll({
@@ -184,9 +233,17 @@ class CertificateController {
         data: {
           identifierField,
           matchMode,
-          query: input,
+          query: activeCriteria?.[0]?.value || '',
           results,
-          resultFields
+          resultFields,
+          searchFields: normalizedCfg
+            ? normalizedCfg.map((f) => ({
+              name: f.name,
+              label: fields.find(x => x?.name === f.name)?.label || f.name,
+              matchMode: f.matchMode,
+              required: f.required
+            }))
+            : null
         }
       });
     } catch (error) {
@@ -199,13 +256,7 @@ class CertificateController {
   async publicDownloadCertificatePDFByParticipant(request, reply) {
     try {
       const { slug, participantId } = request.params;
-      const { identifier } = request.body || {};
-
-      if (!identifier || String(identifier).trim().length === 0) {
-        return reply.status(400).send({
-          error: 'Identifier is required'
-        });
-      }
+      const { identifier, criteria } = request.body || {};
 
       const event = await Event.findOne({
         where: {
@@ -226,42 +277,80 @@ class CertificateController {
         });
       }
 
-      if (!event.publicDownloadIdentifierField) {
-        return reply.status(400).send({
-          error: 'Portal is not configured (identifier field missing)'
-        });
-      }
-
       if (!event.publicDownloadTemplateId) {
         return reply.status(400).send({
           error: 'Portal is not configured (template missing)'
         });
       }
 
-      const input = String(identifier).trim();
-      const identifierField = event.publicDownloadIdentifierField;
-      const matchMode = event.publicDownloadMatchMode || 'exact';
-
+      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
       const allowedFields = Array.isArray(event.participantFields)
         ? event.participantFields.map(f => f?.name).filter(Boolean)
         : [];
-      if (!identifierField || !allowedFields.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
-        return reply.status(400).send({
-          error: 'Portal is not configured (invalid identifier field)'
-        });
+
+      const searchFieldsCfg = Array.isArray(event.publicDownloadSearchFields) ? event.publicDownloadSearchFields : null;
+      const normalizedCfg = searchFieldsCfg
+        ? searchFieldsCfg
+          .map((f) => ({
+            name: String(f?.name || '').trim(),
+            matchMode: f?.matchMode === 'fuzzy' ? 'fuzzy' : 'exact',
+            required: f?.required !== false
+          }))
+          .filter((f) => f.name && allowedFields.includes(f.name) && /^[a-zA-Z0-9_]+$/.test(f.name))
+        : null;
+
+      const inputCriteria = (criteria && typeof criteria === 'object') ? criteria : {};
+
+      let activeCriteria = [];
+      if (normalizedCfg && normalizedCfg.length) {
+        for (const f of normalizedCfg) {
+          const raw = inputCriteria?.[f.name];
+          const val = raw == null ? '' : String(raw).trim();
+          if (f.required && !val) {
+            return reply.status(400).send({ error: `Field ${f.name} is required` });
+          }
+          if (val) {
+            activeCriteria.push({ ...f, value: val });
+          }
+        }
+        if (!activeCriteria.length) {
+          return reply.status(400).send({ error: 'Criteria is required' });
+        }
+      } else {
+        if (!event.publicDownloadIdentifierField) {
+          return reply.status(400).send({
+            error: 'Portal is not configured (identifier field missing)'
+          });
+        }
+
+        if (!identifier || String(identifier).trim().length === 0) {
+          return reply.status(400).send({
+            error: 'Identifier is required'
+          });
+        }
+
+        const identifierFieldLegacy = event.publicDownloadIdentifierField;
+        const matchModeLegacy = event.publicDownloadMatchMode || 'exact';
+        if (!identifierFieldLegacy || !allowedFields.includes(identifierFieldLegacy) || !/^[a-zA-Z0-9_]+$/.test(identifierFieldLegacy)) {
+          return reply.status(400).send({
+            error: 'Portal is not configured (invalid identifier field)'
+          });
+        }
+        activeCriteria = [{ name: identifierFieldLegacy, matchMode: matchModeLegacy, required: true, value: String(identifier).trim() }];
       }
 
-      const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${identifierField}')`);
-      const loweredInput = input.toLowerCase();
+      const andConditions = activeCriteria.map((c) => {
+        const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${c.name}')`);
+        const loweredInput = String(c.value).toLowerCase();
+        return c.matchMode === 'fuzzy'
+          ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
+          : where(loweredExtract, { [Op.eq]: loweredInput });
+      });
 
       const participantWhere = {
         id: parseInt(participantId),
         eventId: event.id,
-        [Op.and]: [
-          matchMode === 'fuzzy'
-            ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
-            : where(loweredExtract, { [Op.eq]: loweredInput })
-        ]
+        [Op.and]: andConditions
       };
 
       const participant = await Participant.findOne({ where: participantWhere });

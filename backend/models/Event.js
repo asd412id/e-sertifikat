@@ -57,6 +57,11 @@ const Event = sequelize.define('Event', {
     allowNull: false,
     defaultValue: 'exact'
   },
+  publicDownloadSearchFields: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null
+  },
   publicDownloadTemplateId: {
     type: DataTypes.INTEGER,
     allowNull: true,
