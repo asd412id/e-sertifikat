@@ -302,6 +302,186 @@ const Certificates = () => {
   const leftPanelScrollTopRef = useRef(0);
   const measureTextTimerRef = useRef(null);
 
+  // ---------- Undo/Redo History (Editor) ----------
+  const historyPastRef = useRef([]);
+  const historyFutureRef = useRef([]);
+  const historyIgnoreRef = useRef(false);
+  const historyLastPushAtRef = useRef(0);
+  const HISTORY_MAX = 60;
+
+  const buildPagesSnapshot = () => {
+    const base = (pages && pages.length > 0)
+      ? [...pages]
+      : [{ objects: elements, background: backgroundImage, _backgroundFile: backgroundImageFile }];
+    const idx = Math.max(0, Math.min(currentPageIndex, base.length - 1));
+    base[idx] = {
+      ...base[idx],
+      objects: elements,
+      background: backgroundImage,
+      _backgroundFile: backgroundImageFile || base[idx]?._backgroundFile || null
+    };
+    return { pages: base, currentPageIndex: idx };
+  };
+
+  const clearHistory = () => {
+    historyPastRef.current = [];
+    historyFutureRef.current = [];
+    historyLastPushAtRef.current = 0;
+  };
+
+  const pushHistorySnapshot = (reason = 'change') => {
+    if (!openDialog) return;
+    if (historyIgnoreRef.current) return;
+
+    const now = Date.now();
+    // throttle frequent updates (typing/slider drag)
+    if (now - (historyLastPushAtRef.current || 0) < 350) return;
+
+    const snap = buildPagesSnapshot();
+    const snapshot = {
+      pages: snap.pages,
+      currentPageIndex: snap.currentPageIndex,
+      selectedElementIds: Array.isArray(selectedElementIds) ? [...selectedElementIds] : [],
+      selectedElementId: selectedElement?.id || null,
+      backgroundImage: snap.pages?.[snap.currentPageIndex]?.background || null,
+      _backgroundFile: snap.pages?.[snap.currentPageIndex]?._backgroundFile || null,
+      reason,
+      at: now,
+    };
+
+    historyPastRef.current.push(snapshot);
+    if (historyPastRef.current.length > HISTORY_MAX) {
+      historyPastRef.current = historyPastRef.current.slice(historyPastRef.current.length - HISTORY_MAX);
+    }
+    historyFutureRef.current = [];
+    historyLastPushAtRef.current = now;
+  };
+
+  const restoreSnapshot = (snapshot) => {
+    if (!snapshot || !snapshot.pages || !snapshot.pages.length) return;
+    historyIgnoreRef.current = true;
+
+    try {
+      const idx = Math.max(0, Math.min(snapshot.currentPageIndex || 0, snapshot.pages.length - 1));
+      const page = snapshot.pages[idx] || { objects: [], background: null, _backgroundFile: null };
+
+      setPages(snapshot.pages);
+      setCurrentPageIndex(idx);
+
+      // mimic loadPageFromPages, but without committing anything
+      setSelectedElement(null);
+      setSelectedElementIds(Array.isArray(snapshot.selectedElementIds) ? snapshot.selectedElementIds : []);
+      shapeRefs.current = {};
+      transformerRef.current?.nodes([]);
+
+      setElements(Array.isArray(page.objects) ? page.objects : []);
+      setBackgroundImage(page.background || null);
+      // Force background reload: on undo/redo, background URL may be unchanged so the backgroundImage effect won't re-run.
+      if (page.background) {
+        setBackgroundImageObj(null);
+        let imageUrl = page.background;
+        if (typeof imageUrl === 'string' && imageUrl.startsWith('/uploads/')) {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+          imageUrl = `${apiBaseUrl}${page.background}`;
+        }
+        const image = new window.Image();
+        image.src = imageUrl;
+        image.onload = () => {
+          setBackgroundImageObj(image);
+        };
+        image.onerror = () => {
+          setBackgroundImageObj(null);
+        };
+      } else {
+        setBackgroundImageObj(null);
+      }
+      setBackgroundImageFile(page._backgroundFile || null);
+
+      // restore selection object (best-effort)
+      if (snapshot.selectedElementId) {
+        const found = (Array.isArray(page.objects) ? page.objects : []).find(o => o.id === snapshot.selectedElementId);
+        if (found) setSelectedElement(found);
+      }
+    } finally {
+      // let state flush before re-enabling history
+      setTimeout(() => { historyIgnoreRef.current = false; }, 0);
+    }
+  };
+
+  const undo = () => {
+    if (!openDialog) return;
+    const past = historyPastRef.current;
+    if (!past || past.length === 0) return;
+
+    const current = buildPagesSnapshot();
+    historyFutureRef.current.push({
+      pages: current.pages,
+      currentPageIndex: current.currentPageIndex,
+      selectedElementIds: Array.isArray(selectedElementIds) ? [...selectedElementIds] : [],
+      selectedElementId: selectedElement?.id || null,
+      backgroundImage: current.pages?.[current.currentPageIndex]?.background || null,
+      _backgroundFile: current.pages?.[current.currentPageIndex]?._backgroundFile || null,
+      reason: 'redo-base',
+      at: Date.now(),
+    });
+
+    const prev = past.pop();
+    restoreSnapshot(prev);
+  };
+
+  const redo = () => {
+    if (!openDialog) return;
+    const future = historyFutureRef.current;
+    if (!future || future.length === 0) return;
+
+    const current = buildPagesSnapshot();
+    historyPastRef.current.push({
+      pages: current.pages,
+      currentPageIndex: current.currentPageIndex,
+      selectedElementIds: Array.isArray(selectedElementIds) ? [...selectedElementIds] : [],
+      selectedElementId: selectedElement?.id || null,
+      backgroundImage: current.pages?.[current.currentPageIndex]?.background || null,
+      _backgroundFile: current.pages?.[current.currentPageIndex]?._backgroundFile || null,
+      reason: 'undo-base',
+      at: Date.now(),
+    });
+    if (historyPastRef.current.length > HISTORY_MAX) {
+      historyPastRef.current = historyPastRef.current.slice(historyPastRef.current.length - HISTORY_MAX);
+    }
+
+    const next = future.pop();
+    restoreSnapshot(next);
+  };
+
+  useEffect(() => {
+    if (!openDialog) return;
+    const handler = (e) => {
+      const key = String(e.key || '').toLowerCase();
+      const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform);
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if (!mod) return;
+
+      // Avoid triggering while typing into inputs
+      const t = e.target;
+      const tag = (t && t.tagName) ? String(t.tagName).toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || (t && t.isContentEditable)) {
+        // allow undo/redo even when focused in text input? For now, keep native behavior.
+        return;
+      }
+
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === 'y' && !e.shiftKey) || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDialog, selectedElement?.id]);
+
   useEffect(() => {
     const el = leftPanelScrollRef.current;
     if (!el) return;
@@ -316,6 +496,8 @@ const Certificates = () => {
       ? selectedElementIds
       : (selectedElement ? [selectedElement.id] : []);
     if (!ids.length) return;
+
+    pushHistorySnapshot('nudge');
 
     setElements((prev) => prev.map((el) => {
       if (!ids.includes(el.id)) return el;
