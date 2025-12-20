@@ -550,8 +550,8 @@ class PuppeteerPDFService {
             let offsetY = -2.5;
             if (!element.wordWrap) {
               if (fs >= 28) offsetY -= 0;
-              if (fs >= 40) offsetY -= 1.5;
-              if (fs >= 56) offsetY -= 2;
+              if (fs >= 40) offsetY -= 2;
+              if (fs >= 56) offsetY -= 3;
               // untuk middle, sedikit naik agar visually center tetap rapih
               if (element.verticalAlign === 'middle') offsetY -= 0.3;
             }
