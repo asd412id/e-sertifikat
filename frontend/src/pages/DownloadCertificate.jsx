@@ -268,7 +268,7 @@ const DownloadCertificate = () => {
                     )}
 
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Masukkan data sesuai yang diminta panitia, lalu pilih data yang benar untuk mengunduh sertifikat.
+                      Masukkan data yang sesuai, lalu pilih data yang benar untuk mengunduh sertifikat.
                     </Typography>
 
                     <Box component="form" onSubmit={handleSearch}>
