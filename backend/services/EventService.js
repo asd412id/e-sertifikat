@@ -1,6 +1,7 @@
 const { Event, Participant, CertificateTemplate } = require('../models');
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 
 class EventService {
   async createEvent(eventData, userId) {
@@ -66,6 +67,109 @@ class EventService {
       }
 
       await event.update(eventData);
+      return event;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async updatePublicDownloadSettings(eventId, settings, userId) {
+    try {
+      const event = await Event.findOne({
+        where: { id: eventId, userId, isActive: true }
+      });
+
+      if (!event) {
+        throw new Error('Event not found');
+      }
+
+      const {
+        enabled,
+        identifierField,
+        matchMode,
+        templateId,
+        regenerateSlug,
+        slug: manualSlug,
+        resultFields
+      } = settings || {};
+
+      if (typeof enabled !== 'boolean') {
+        throw new Error('enabled must be a boolean');
+      }
+
+      if (enabled) {
+        const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
+        const allowedFieldNames = fields.map(f => f?.name).filter(Boolean);
+
+        if (!identifierField || !allowedFieldNames.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
+          throw new Error('Invalid identifierField');
+        }
+
+        if (matchMode && !['exact', 'fuzzy'].includes(matchMode)) {
+          throw new Error('Invalid matchMode');
+        }
+
+        if (!templateId || Number.isNaN(parseInt(templateId))) {
+          throw new Error('templateId is required');
+        }
+
+        const template = await CertificateTemplate.findOne({
+          where: { id: parseInt(templateId), eventId: event.id, isActive: true }
+        });
+
+        if (!template) {
+          throw new Error('Template not found');
+        }
+      }
+
+      let slug = event.publicDownloadSlug;
+      if (enabled && typeof manualSlug === 'string' && manualSlug.trim() && !regenerateSlug) {
+        const candidate = manualSlug.trim().toLowerCase();
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate)) {
+          throw new Error('Invalid slug format');
+        }
+        if (candidate.length < 3 || candidate.length > 60) {
+          throw new Error('Invalid slug length');
+        }
+
+        const existing = await Event.findOne({ where: { publicDownloadSlug: candidate } });
+        if (existing && existing.id !== event.id) {
+          throw new Error('Slug already in use');
+        }
+        slug = candidate;
+      } else if (enabled && (!slug || regenerateSlug)) {
+        const base = String(event.title || 'event')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .substring(0, 40) || 'event';
+
+        for (let i = 0; i < 10; i++) {
+          const suffix = crypto.randomBytes(3).toString('hex');
+          const candidate = `${base}-${suffix}`;
+          const existing = await Event.findOne({ where: { publicDownloadSlug: candidate } });
+          if (!existing) {
+            slug = candidate;
+            break;
+          }
+        }
+
+        if (!slug) {
+          throw new Error('Failed to generate unique slug');
+        }
+      }
+
+      await event.update({
+        publicDownloadEnabled: enabled,
+        publicDownloadIdentifierField: enabled ? identifierField : null,
+        publicDownloadMatchMode: enabled ? (matchMode || 'exact') : event.publicDownloadMatchMode,
+        publicDownloadTemplateId: enabled ? parseInt(templateId) : null,
+        publicDownloadSlug: enabled ? slug : event.publicDownloadSlug,
+        publicDownloadResultFields: enabled
+          ? (Array.isArray(resultFields) ? resultFields : null)
+          : null
+      });
+
       return event;
     } catch (error) {
       throw error;

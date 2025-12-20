@@ -25,6 +25,11 @@ export const eventService = {
     return response.data;
   },
 
+  updatePublicDownloadSettings: async (id, settings) => {
+    const response = await api.put(`/events/${id}/public-download-settings`, settings);
+    return response.data;
+  },
+
   // Delete event
   deleteEvent: async (id) => {
     const response = await api.delete(`/events/${id}`);
@@ -36,7 +41,7 @@ export const eventService = {
     const response = await api.get(`/events/${id}/participant-fields`);
     return response.data;
   }
-};
+}; 
 
 export const participantService = {
   // Get participants for an event
@@ -139,6 +144,25 @@ export const certificateService = {
       responseType: 'blob'
     });
     return response.data;
+  },
+
+  // Public portal: get portal info (no auth)
+  getPublicPortalInfo: async (slug) => {
+    const response = await api.get(`/certificates/public/${slug}`);
+    return response.data;
+  },
+
+  // Public portal: download PDF (no auth)
+  publicDownloadPDF: async (slug, identifier) => {
+    const response = await api.post(
+      `/certificates/public/${slug}/download-pdf`,
+      { identifier },
+      {
+        responseType: 'blob',
+        timeout: 300000
+      }
+    );
+    return response;
   },
 
   // Bulk download certificates as single PDF

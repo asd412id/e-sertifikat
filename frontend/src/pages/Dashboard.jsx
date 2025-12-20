@@ -155,47 +155,56 @@ const Dashboard = () => {
   return (
     <Layout>
       <Box>
-        {/* Header Section */}
         <Paper
           elevation={0}
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            p: 4,
-            borderRadius: 3,
+            p: { xs: 2.5, md: 3 },
             mb: 4,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
           }}
         >
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Box>
-              <Typography variant="h3" component="h1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                Dashboard
-              </Typography>
-              <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                Kelola acara dan sertifikat Anda dengan mudah
-              </Typography>
-            </Box>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                  background: 'rgba(102, 126, 234, 0.14)',
+                  border: '1px solid rgba(102, 126, 234, 0.22)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'primary.main',
+                }}
+              >
+                <Analytics />
+              </Box>
+              <Box>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 800, mb: 0.25 }}>
+                  Dashboard
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Ringkasan acara & sertifikat Anda
+                </Typography>
+              </Box>
+            </Stack>
             <Button
               variant="contained"
               size="large"
               startIcon={<Add />}
               onClick={() => navigate('/events')}
               sx={{
-                bgcolor: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)',
-                color: 'white',
-                fontWeight: 600,
                 px: 3,
-                py: 1.5,
+                py: 1.25,
                 borderRadius: 2,
-                '&:hover': {
-                  bgcolor: 'rgba(255,255,255,0.3)',
-                  transform: 'translateY(-2px)',
-                },
+                fontWeight: 700,
               }}
             >
-              Buat Acara Baru
+              Buat Acara
             </Button>
           </Stack>
         </Paper>
@@ -231,11 +240,12 @@ const Dashboard = () => {
                 width: 48,
                 height: 48,
                 borderRadius: 2,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: 'rgba(102, 126, 234, 0.14)',
+                border: '1px solid rgba(102, 126, 234, 0.22)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: 'white',
+                color: 'primary.main',
               }}
             >
               <CalendarMonth />
@@ -329,16 +339,7 @@ const Dashboard = () => {
                 size="large"
                 startIcon={<Add />}
                 onClick={() => navigate('/events')}
-                sx={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  px: 4,
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                  },
-                }}
+                sx={{ px: 4, py: 1.5, borderRadius: 2, fontWeight: 700 }}
               >
                 Buat Acara Pertama
               </Button>

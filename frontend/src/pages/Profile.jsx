@@ -152,36 +152,37 @@ const Profile = () => {
   return (
     <Layout>
       <Container maxWidth="md">
-        {/* Header */}
         <Paper
           elevation={0}
           sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            p: 4,
-            borderRadius: 3,
+            p: { xs: 2.5, md: 3 },
             mb: 4,
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
           }}
         >
-          <Stack direction="row" alignItems="center" spacing={3}>
+          <Stack direction="row" alignItems="center" spacing={2.5}>
             <Avatar
               sx={{
-                width: 80,
-                height: 80,
-                bgcolor: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(10px)',
-                border: '2px solid rgba(255,255,255,0.3)',
-                fontSize: '2rem',
-                fontWeight: 'bold',
+                width: 56,
+                height: 56,
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                border: '1px solid rgba(255,255,255,0.9)',
+                boxShadow: '0 10px 26px rgba(2, 6, 23, 0.12)',
+                fontSize: '1.4rem',
+                fontWeight: 800,
               }}
             >
               {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
             </Avatar>
             <Box>
-              <Typography variant="h3" component="h1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              <Typography variant="h4" component="h1" sx={{ fontWeight: 800, mb: 0.25 }}>
                 Profil Saya
               </Typography>
-              <Typography variant="h6" sx={{ opacity: 0.9 }}>
+              <Typography variant="body2" color="text.secondary">
                 Kelola informasi profil dan keamanan akun Anda
               </Typography>
             </Box>
@@ -217,7 +218,10 @@ const Profile = () => {
                     sx={{
                       width: 56,
                       height: 56,
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      bgcolor: 'primary.main',
+                      color: 'primary.contrastText',
+                      border: '1px solid rgba(255,255,255,0.9)',
+                      boxShadow: '0 10px 26px rgba(2, 6, 23, 0.10)',
                     }}
                   >
                     <EditOutlined sx={{ fontSize: 28 }} />
@@ -253,11 +257,6 @@ const Profile = () => {
                         InputProps={{
                           startAdornment: <PersonOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
                         }}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 2,
-                          },
-                        }}
                       />
                     </Grid>
 
@@ -273,11 +272,6 @@ const Profile = () => {
                         disabled={loading}
                         InputProps={{
                           startAdornment: <BadgeOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
-                        }}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 2,
-                          },
                         }}
                       />
                     </Grid>
@@ -296,11 +290,6 @@ const Profile = () => {
                         InputProps={{
                           startAdornment: <EmailOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
                         }}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 2,
-                          },
-                        }}
                       />
                     </Grid>
 
@@ -315,13 +304,7 @@ const Profile = () => {
                           px: 4,
                           py: 1.5,
                           borderRadius: 2,
-                          fontWeight: 600,
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                          textTransform: 'none',
-                          '&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)',
-                          },
+                          fontWeight: 700,
                         }}
                       >
                         {loading ? 'Menyimpan...' : 'Simpan Perubahan'}

@@ -135,14 +135,19 @@ class PuppeteerPDFService {
       console.log(`Starting PDF generation for ${list.length} participant(s)`);
 
       // Log font information for debugging
-      if (template.design && template.design.objects) {
+      let fontsUsedList = [];
+      if (template.design && (template.design.objects || template.design.pages)) {
         const fontsUsed = new Set();
-        template.design.objects.forEach(element => {
+        const allObjects = Array.isArray(template.design.pages)
+          ? template.design.pages.flatMap(p => (Array.isArray(p?.objects) ? p.objects : []))
+          : (Array.isArray(template.design.objects) ? template.design.objects : []);
+        allObjects.forEach(element => {
           if (element.type === 'text' && element.fontFamily) {
             fontsUsed.add(element.fontFamily);
           }
         });
-        console.log('Fonts used in template:', Array.from(fontsUsed));
+        fontsUsedList = Array.from(fontsUsed);
+        console.log('Fonts used in template:', fontsUsedList);
       }
 
       // Prepare local fonts CSS (download Google Fonts to local server)
@@ -165,8 +170,22 @@ class PuppeteerPDFService {
       });
 
       // Explicitly load all fonts before proceeding
-      await page.evaluate(() => {
-        const MAX_WAIT = 6000; // cap to keep flow fast; fonts use font-display:swap
+      await page.evaluate((families) => {
+        const unique = Array.isArray(families) ? families.filter(Boolean) : [];
+        // Proactively request these fonts to be loaded (best-effort)
+        if (document.fonts && unique.length) {
+          unique.forEach((fam) => {
+            try {
+              const clean = String(fam).replace(/['"]/g, '').trim();
+              // Attempt both normal and bold to increase chance weights are ready
+              document.fonts.load(`16px "${clean}"`);
+              document.fonts.load(`bold 16px "${clean}"`);
+              document.fonts.load(`italic 16px "${clean}"`);
+            } catch (_) { /* ignore */ }
+          });
+        }
+
+        const MAX_WAIT = 15000; // give more time for remote fonts when needed
         const start = Date.now();
         return new Promise((resolve) => {
           if (!document.fonts) return setTimeout(resolve, 1500);
@@ -184,7 +203,7 @@ class PuppeteerPDFService {
           document.fonts.ready.finally(check);
           setTimeout(check, 300);
         });
-      });
+      }, fontsUsedList);
 
       // Force a reflow to ensure fonts are properly applied
       await page.evaluate(() => {
@@ -237,8 +256,16 @@ class PuppeteerPDFService {
   generateHTMLFromTemplate(template, participants, localFontsCSS = '') {
     // Collect all unique font families used in the template
     const fontFamilies = new Set();
-    if (template.design && template.design.objects) {
-      for (const element of template.design.objects) {
+    const designPages = (template.design && Array.isArray(template.design.pages) && template.design.pages.length)
+      ? template.design.pages
+      : [{
+        objects: (template.design && Array.isArray(template.design.objects)) ? template.design.objects : [],
+        background: (template.design && template.design.background) ? template.design.background : null
+      }];
+
+    for (const pageDef of designPages) {
+      const objs = Array.isArray(pageDef?.objects) ? pageDef.objects : [];
+      for (const element of objs) {
         if (element.type === 'text' && element.fontFamily) {
           // Clean up font family name - remove quotes and extra spaces
           const cleanFontFamily = element.fontFamily.replace(/['"]/g, '').trim();
@@ -296,8 +323,8 @@ class PuppeteerPDFService {
 
     // Preload background image if exists to accelerate first paint
     let backgroundPreloadLink = '';
-    if (template.design && template.design.background) {
-      let preloadUrl = template.design.background;
+    if (designPages[0] && designPages[0].background) {
+      let preloadUrl = designPages[0].background;
       if (preloadUrl.startsWith('/uploads/')) {
         const port = process.env.PORT || 3000;
         preloadUrl = `http://localhost:${port}/api${preloadUrl}`;
@@ -356,41 +383,32 @@ class PuppeteerPDFService {
         }
     `;
 
-    // Add background image if it exists
-    if (template.design && template.design.background) {
-      // Handle local background images
-      let backgroundUrl = template.design.background;
-      if (backgroundUrl.startsWith('/uploads/')) {
-        // Convert to absolute path for Puppeteer with correct API prefix
-        const port = process.env.PORT || 3000;
-        // Ensure we hit the Fastify static route: /api/uploads/
-        backgroundUrl = `http://localhost:${port}/api${backgroundUrl}`; // becomes /api/uploads/...
-      }
-
-      html += `
-        .certificate-container {
-          background-image: url('${backgroundUrl}');
-          background-size: ${template.width}px ${template.height}px;
-          background-position: 0 0;
-          background-repeat: no-repeat;
-        }
-      `;
-    }
-
     html += `
       </style>
     </head>
     <body>
     `;
 
+    const resolveBackgroundUrl = (bg) => {
+      if (!bg || typeof bg !== 'string') return null;
+      if (!bg.startsWith('/uploads/')) return bg;
+      const port = process.env.PORT || 3000;
+      return `http://localhost:${port}/api${bg}`;
+    };
+
     // Generate a page for each participant
     participants.forEach((participant, index) => {
-      html += `<div class="certificate-page">`;
-      html += `<div class="certificate-container">`;
+      for (const pageDef of designPages) {
+        const bgUrl = resolveBackgroundUrl(pageDef?.background);
+        const bgStyle = bgUrl
+          ? `background-image: url('${bgUrl}'); background-size: ${template.width}px ${template.height}px; background-position: 0 0; background-repeat: no-repeat;`
+          : '';
+        html += `<div class="certificate-page">`;
+        html += `<div class="certificate-container" style="${bgStyle}">`;
 
-      // Add elements for this participant
-      if (template.design && template.design.objects) {
-        for (const element of template.design.objects) {
+        // Add elements for this participant (per page)
+        const pageObjects = Array.isArray(pageDef?.objects) ? pageDef.objects : [];
+        for (const element of pageObjects) {
           if (element.type === 'text') {
             let text = element.text || '';
 
@@ -400,6 +418,15 @@ class PuppeteerPDFService {
               const participantData = (participant && participant.data) || {};
               text = this.replacePlaceholders(text, participantData);
             }
+
+            const escapeHtml = (s) => String(s)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+
+            const safeText = escapeHtml(text).replace(/\n/g, '<br/>');
 
             // Create text element styles
             const styles = [];
@@ -428,6 +455,8 @@ class PuppeteerPDFService {
             if (element.fontWeight) styles.push(`font-weight: ${element.fontWeight}`);
             if (element.fontStyle) styles.push(`font-style: ${element.fontStyle}`);
             if (element.textDecoration) styles.push(`text-decoration: ${element.textDecoration}`);
+            if (typeof element.opacity === 'number') styles.push(`opacity: ${element.opacity}`);
+            if (typeof element.letterSpacing === 'number') styles.push(`letter-spacing: ${element.letterSpacing}px`);
 
             // Position styles
             styles.push('position: absolute');
@@ -441,12 +470,17 @@ class PuppeteerPDFService {
             const lineHeightFactor = (typeof element.lineHeight === 'number' && element.lineHeight > 0) ? element.lineHeight : 1.0;
             let height = (element.fontSize ? element.fontSize * lineHeightFactor : 32);
 
-            // Handle shadow offset compensation for bulk generation
-            if (element.shadowOffsetY && element.shadowOffsetY < 0) {
-              // Adjust top position when shadow is above the text
-              styles.push(`top: ${baseY + element.shadowOffsetY}px`);
+            const anchorHeight = (typeof element._measuredHeight === 'number' && element._measuredHeight > 0)
+              ? element._measuredHeight
+              : height;
+
+            if (element.verticalAlign === 'middle' || element.verticalAlign === 'bottom') {
+              styles.push(`height: ${Math.round(anchorHeight * 10) / 10}px`);
+            } else if (element.wordWrap) {
+              styles.push(`min-height: ${height}px`);
+            } else {
+              styles.push(`height: ${height}px`);
             }
-            styles.push(`height: ${height}px`);
 
             // PDF Position Compensation - Fix for text position differences between editor and PDF
             // The issue occurs because:
@@ -482,40 +516,40 @@ class PuppeteerPDFService {
             // 30. Different text rendering text rendering text rendering
 
             // Kompensasi kecil agar posisi teks PDF sejajar dengan Konva (baseline metrics berbeda)
+            // Catatan: untuk kasus beda "sedikit", gunakan offset pecahan agar tidak terlalu agresif.
             const fs = element.fontSize || 24;
-            let offsetY = -1 - Math.floor((fs >= 24 ? fs / 19 : 0)); // basis (sekitar -1..-3)
-            if (element.verticalAlign === 'middle') offsetY -= 1; // sedikit ekstra
-            if (element.verticalAlign === 'bottom') offsetY -= Number(fs / 7).toFixed(3);
+            let offsetY = 0;
+            // NOTE: For wrapped/multi-line text, baseline compensation tends to over-shift.
+            // Keep it at 0 so the top position matches the editor more closely.
+            if (!element.wordWrap) {
+              if (fs >= 28) offsetY = -0.5;
+              if (fs >= 40) offsetY = -1;
+              if (fs >= 56) offsetY = -1.5;
+              // untuk middle, sedikit naik agar visually center tetap rapih
+              if (element.verticalAlign === 'middle') offsetY -= 0.5;
+            }
             styles.push(`top: ${baseY + offsetY}px`);
 
             // Text alignment
             if (element.align) styles.push(`text-align: ${element.align}`);
 
-            // Vertical alignment
             if (element.verticalAlign === 'middle' || element.verticalAlign === 'bottom') {
               styles.push('display: flex');
               styles.push('flex-direction: column');
-              if (element.verticalAlign === 'middle') {
-                styles.push('justify-content: center');
-              } else if (element.verticalAlign === 'bottom') {
-                styles.push('justify-content: flex-end');
-              }
-              if (element.align === 'right') {
-                styles.push('align-items: flex-end');
-              } else if (element.align === 'center') {
-                styles.push('align-items: center');
-              } else {
-                styles.push('align-items: flex-start');
-              }
-            } else {
-              if (element.fontSize) {
-                // Use pixel line height to match canvas rendering closely
-                styles.push(`line-height: ${Math.round(element.fontSize * lineHeightFactor)}px`);
-                styles.push(`height: ${Math.round(element.fontSize * lineHeightFactor)}px`);
-              }
+              if (element.verticalAlign === 'middle') styles.push('justify-content: center');
+              else styles.push('justify-content: flex-end');
+              if (element.align === 'right') styles.push('align-items: flex-end');
+              else if (element.align === 'center') styles.push('align-items: center');
+              else styles.push('align-items: flex-start');
+            }
+
+            if (element.fontSize) {
+              styles.push(`line-height: ${Math.round(element.fontSize * lineHeightFactor)}px`);
             }
 
             styles.push('overflow: visible');
+            styles.push('padding: 0');
+            styles.push('margin: 0');
             styles.push('white-space: pre');
 
             // Apply word wrap setting
@@ -524,32 +558,6 @@ class PuppeteerPDFService {
               styles.push('word-wrap: break-word');
             } else {
               styles.push('white-space: nowrap');
-
-              // Handle text extension based on alignment when nowrap is enabled
-              if (element.align === 'center') {
-                // For centered text with nowrap, expand equally in both directions
-                styles.push('text-align: center');
-                styles.push('display: inline-block');
-                styles.push('width: auto');
-                styles.push('left: 0');
-                styles.push('right: 0');
-                styles.push('margin-left: auto');
-                styles.push('margin-right: auto');
-              } else if (element.align === 'right') {
-                // For right-aligned text with nowrap, expand to the left
-                styles.push('text-align: right');
-                styles.push('display: inline-block');
-                styles.push('width: auto');
-                styles.push('left: 0');
-                styles.push('right: 0');
-                styles.push('margin-left: auto');
-              } else {
-                // For left-aligned text with nowrap, expand to the right (default behavior)
-                styles.push('text-align: left');
-                styles.push('display: inline-block');
-                styles.push('width: auto');
-                styles.push('left: 0');
-              }
             }
 
             // Apply rotation to text elements
@@ -592,18 +600,25 @@ class PuppeteerPDFService {
             if (element.bgColor) {
               const pad = Math.max(0, element.bgPadding || 0);
               const radius = Math.max(0, element.bgRadius || 0);
+              const boxHeight = (element.verticalAlign === 'middle' || element.verticalAlign === 'bottom')
+                ? anchorHeight
+                : height;
               const bgStyles = [
                 'position: absolute',
                 `left: ${baseX - pad}px`,
                 // top termasuk kompensasi offsetY
                 `top: ${baseY + offsetY - pad}px`,
                 `width: ${width + pad * 2}px`,
-                `height: ${height + pad * 2}px`,
+                `height: ${Math.round((boxHeight + pad * 2) * 10) / 10}px`,
                 `background: ${element.bgColor}`,
                 radius ? `border-radius: ${radius}px` : '',
                 'display: flex',
                 'flex-direction: column',
-                'justify-content: center'
+                (element.verticalAlign === 'bottom')
+                  ? 'justify-content: flex-end'
+                  : (element.verticalAlign === 'top')
+                    ? 'justify-content: flex-start'
+                    : 'justify-content: center'
               ].filter(Boolean);
               // alignment inside background
               if (element.align === 'right') bgStyles.push('align-items: flex-end');
@@ -612,9 +627,15 @@ class PuppeteerPDFService {
               // Remove absolute positioning duplication from text styles
               const innerStyles = styles.filter(s => !s.startsWith('left:') && !s.startsWith('top:') && !s.startsWith('position:') && !s.startsWith('width:') && !s.startsWith('height:'));
               innerStyles.push(`padding: 0 ${Math.max(0, Math.min(pad, Math.round(width / 4)))}px`);
-              html += `<div style="${bgStyles.join('; ')}"><div style="${innerStyles.join('; ')}">${text}</div></div>`;
+              html += `<div style="${bgStyles.join('; ')}"><div style="${innerStyles.join('; ')}">${safeText}</div></div>`;
             } else {
-              html += `<div style="${styles.join('; ')}">${text}</div>`;
+              if (element.verticalAlign === 'middle' || element.verticalAlign === 'bottom') {
+                // Use an inner block so flex alignment anchors the text bottom/center correctly,
+                // and wrapped lines can overflow upward when content is taller than the anchor box.
+                html += `<div style="${styles.join('; ')}"><div style="width: 100%;">${safeText}</div></div>`;
+              } else {
+                html += `<div style="${styles.join('; ')}">${safeText}</div>`;
+              }
             }
           } else if (element.type === 'image' && element.src) {
             // Resolve image URL (support local uploads)
@@ -655,189 +676,29 @@ class PuppeteerPDFService {
               const sx = element.shadowOffsetX || 0;
               const sy = element.shadowOffsetY || 0;
               const blur = element.shadowBlur || 0;
-              const col = element.shadowColor || 'rgba(0,0,0,0.3)';
+              const col = element.shadowColor || 'rgba(0,0,0,0.35)';
               styles.push(`box-shadow: ${sx}px ${sy}px ${blur}px ${col}`);
             }
 
             html += `<img src="${imgUrl}" style="${styles.join('; ')}" />`;
           }
         }
-      }
 
-      html += `</div>`;
-      html += `</div>`;
+        html += `</div>`;
+        html += `</div>`;
+      }
     });
 
     html += `
-    </body>
-    </html>
+      </body>
+      </html>
     `;
 
-    console.log(`Generated bulk HTML with ${participants.length} pages and Google Fonts:`, googleFonts);
     return html;
   }
 
   async createPDFFromTemplate(template, participant) {
-    let page = null;
-    try {
-      await this.initialize();
-      page = await this.browser.newPage();
-      await page.setCacheEnabled(true);
-
-      // Set a longer timeout for page operations
-      page.setDefaultTimeout(45000); // faster fail
-
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
-      // Enable local file access
-      await page.setRequestInterception(true);
-
-      page.on('request', (request) => {
-        const url = request.url();
-        const port = process.env.PORT || 3000;
-
-        // Handle local upload files (support both legacy /uploads and current /api/uploads)
-        if (url.startsWith(`http://localhost:${port}/uploads/`) ||
-          url.startsWith(`http://localhost:${port}/api/uploads/`)) {
-          const fileName = url.startsWith(`http://localhost:${port}/api/uploads/`)
-            ? url.replace(`http://localhost:${port}/api/uploads/`, '')
-            : url.replace(`http://localhost:${port}/uploads/`, '');
-          const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
-
-          try {
-            // Check if file exists
-            if (fsSync.existsSync(filePath)) {
-              const data = fsSync.readFileSync(filePath);
-              const extension = path.extname(filePath).toLowerCase();
-              let contentType = 'application/octet-stream';
-
-              if (extension === '.png') {
-                contentType = 'image/png';
-              } else if (extension === '.jpg' || extension === '.jpeg') {
-                contentType = 'image/jpeg';
-              }
-
-              request.respond({
-                status: 200,
-                contentType: contentType,
-                body: data
-              });
-            } else {
-              request.continue();
-            }
-          } catch (error) {
-            request.continue();
-          }
-        } else {
-          request.continue();
-        }
-      });
-
-
-      // Prepare local fonts CSS (download Google Fonts to local server)
-      const localFontsCSS = await this.prepareLocalFonts(template);
-
-      // Create HTML content for the certificate
-      const htmlContent = this.generateHTMLFromTemplate(template, participant, localFontsCSS);
-
-      // Set content and wait for it to load
-      await page.setContent(htmlContent, {
-        waitUntil: 'domcontentloaded',
-        timeout: 30000
-      });
-
-      // Explicitly load all fonts before proceeding
-      await page.evaluate(() => {
-        const MAX_WAIT = 10000; // Increased to 10s cap
-        const start = Date.now();
-        return new Promise(resolve => {
-          if (!document.fonts) return setTimeout(resolve, 1500);
-          const check = () => {
-            const pending = Array.from(document.fonts).filter(f => f.status !== 'loaded');
-            if (!pending.length || Date.now() - start > MAX_WAIT) {
-              requestAnimationFrame(resolve);
-            } else {
-              setTimeout(check, 500); // Increased check interval
-            }
-          };
-          if (document.fonts.status === 'loaded') {
-            return resolve();
-          }
-          document.fonts.ready.finally(check);
-          setTimeout(check, 500);
-        });
-      });
-
-      // Force a reflow to ensure fonts are properly applied
-      await page.evaluate(() => {
-        document.body.offsetHeight;
-      });
-
-      // Check for font loading errors
-      const fontErrors = await page.evaluate(() => {
-        const errors = [];
-        if (document.fonts) {
-          document.fonts.forEach((font) => {
-            if (font.status === 'error') {
-              errors.push({
-                family: font.family,
-                style: font.style,
-                weight: font.weight,
-                status: font.status
-              });
-            }
-          });
-        }
-        return errors;
-      });
-
-
-      // If fonts are not loaded properly (excluding system fonts), try to force a reload
-      const systemFonts = [
-        'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Courier New',
-        'Verdana', 'Tahoma', 'Trebuchet MS', 'Segoe UI', 'Calibri', 'Cambria',
-        'Garamond', 'Lucida Console', 'Monaco', 'Comic Sans MS', 'Impact',
-        'Palatino', 'Bookman', 'Avant Garde', 'Century Gothic', 'Franklin Gothic Medium',
-        'Brush Script MT'
-      ];
-      const needReload = fontVerification.some(result => (!result.isFontLoaded || !result.isFontApplied) && !systemFonts.includes(result.firstFont));
-      if (needReload) {
-        await page.evaluate(() => {
-          // Force a style recalculation
-          document.body.style.display = 'none';
-          document.body.offsetHeight;
-          document.body.style.display = '';
-        });
-
-        // Wait a bit more for fonts to load
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      // Generate PDF with optimized settings
-      const pdfBuffer = await page.pdf({
-        width: `${template.width}px`,
-        height: `${template.height}px`,
-        printBackground: true,
-        margin: {
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0
-        },
-        preferCSSPageSize: true
-      });
-
-      return pdfBuffer;
-    } catch (error) {
-      throw error;
-    } finally {
-      // Always close the page to free up resources
-      if (page) {
-        try {
-          await page.close();
-        } catch (error) {
-        }
-      }
-    }
+    return this.createPDF(template, participant);
   }
 
   // generateHTMLFromTemplateSingle method for single certificates is now handled by the bulk method
@@ -974,9 +835,18 @@ PuppeteerPDFService.prototype._buildGoogleFontsQuery = function (template) {
     'Brush Script MT', 'System UI', 'sans-serif', 'serif', 'monospace'
   ];
 
+  const getAllTextObjects = () => {
+    const pages = template?.design?.pages;
+    if (Array.isArray(pages) && pages.length > 0) {
+      return pages.flatMap(p => (Array.isArray(p?.objects) ? p.objects : []));
+    }
+    return Array.isArray(template?.design?.objects) ? template.design.objects : [];
+  };
+
   // Collect font families
-  if (template.design?.objects) {
-    for (const el of template.design.objects) {
+  const allObjects = getAllTextObjects();
+  if (allObjects.length) {
+    for (const el of allObjects) {
       if (el.type === 'text' && el.fontFamily) {
         const fam = el.fontFamily.replace(/['"]/g, '').trim();
         if (fam && !systemFonts.includes(fam)) {
@@ -1003,8 +873,8 @@ PuppeteerPDFService.prototype._buildGoogleFontsQuery = function (template) {
   }
 
   // Process all text elements to collect font variants
-  if (template.design?.objects) {
-    for (const el of template.design.objects) {
+  if (allObjects.length) {
+    for (const el of allObjects) {
       if (el.type === 'text' && el.fontFamily) {
         const fam = el.fontFamily.replace(/['"]/g, '').trim();
         if (!families.has(fam)) continue;

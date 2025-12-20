@@ -9,6 +9,7 @@ async function eventRoutes(fastify, options) {
   fastify.get('/', EventController.getEvents);
   fastify.get('/:id', EventController.getEventById);
   fastify.put('/:id', EventController.updateEvent);
+  fastify.put('/:id/public-download-settings', EventController.updatePublicDownloadSettings);
   fastify.delete('/:id', EventController.deleteEvent);
   fastify.get('/:id/participant-fields', EventController.getEventParticipantFields);
 }

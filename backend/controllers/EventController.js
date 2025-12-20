@@ -99,6 +99,34 @@ class EventController {
     }
   }
 
+  async updatePublicDownloadSettings(request, reply) {
+    try {
+      const { id } = request.params;
+      const settings = request.body;
+
+      const event = await EventService.updatePublicDownloadSettings(
+        parseInt(id),
+        settings,
+        request.user.userId
+      );
+
+      reply.send({
+        success: true,
+        message: 'Public download settings updated successfully',
+        data: {
+          event,
+          publicDownloadUrl: event.publicDownloadEnabled && event.publicDownloadSlug
+            ? `/download/${event.publicDownloadSlug}`
+            : null
+        }
+      });
+    } catch (error) {
+      reply.status(400).send({
+        error: error.message
+      });
+    }
+  }
+
   async deleteEvent(request, reply) {
     try {
       const { id } = request.params;

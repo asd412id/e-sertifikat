@@ -8,26 +8,32 @@ import App from './App'
 import { AuthProvider } from './context/AuthContext'
 
 const theme = createTheme({
+  shape: {
+    borderRadius: 6,
+  },
   palette: {
     primary: {
-      main: '#1976d2',
-      light: '#42a5f5',
-      dark: '#1565c0',
+      main: '#667eea',
+      light: '#93a5ff',
+      dark: '#4c5fd6',
     },
     secondary: {
-      main: '#dc004e',
-      light: '#ff5983',
-      dark: '#9a0036',
+      main: '#764ba2',
+      light: '#9a74c3',
+      dark: '#5d3885',
     },
     background: {
-      default: '#f5f5f5',
+      default: '#f8fafc',
       paper: '#ffffff',
     },
   },
   typography: {
     fontFamily: 'Roboto, Arial, sans-serif',
+    h1: { fontWeight: 800 },
+    h2: { fontWeight: 800 },
+    h3: { fontWeight: 800 },
     h4: {
-      fontWeight: 600,
+      fontWeight: 700,
     },
     h5: {
       fontWeight: 600,
@@ -35,13 +41,85 @@ const theme = createTheme({
     h6: {
       fontWeight: 600,
     },
+    button: {
+      fontWeight: 600,
+    },
   },
   components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: {
+          backgroundColor: '#f8fafc',
+        },
+      },
+    },
     MuiButton: {
       styleOverrides: {
         root: {
           textTransform: 'none',
-          borderRadius: 8,
+          borderRadius: 10,
+          boxShadow: 'none',
+        },
+        contained: {
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0 10px 30px rgba(2, 6, 23, 0.12)',
+          },
+        },
+        outlined: {
+          borderWidth: 1,
+          '&:hover': {
+            borderWidth: 1,
+          },
+        },
+      },
+    },
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+        },
+      },
+    },
+    MuiTextField: {
+      defaultProps: {
+        variant: 'outlined',
+        size: 'medium',
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+          backgroundColor: 'rgba(2, 6, 23, 0.02)',
+          transition: 'background-color 120ms ease, box-shadow 120ms ease',
+          '&:hover': {
+            backgroundColor: 'rgba(2, 6, 23, 0.035)',
+          },
+          '&.Mui-focused': {
+            backgroundColor: '#ffffff',
+            boxShadow: '0 0 0 4px rgba(102, 126, 234, 0.18)',
+          },
+        },
+        notchedOutline: {
+          borderColor: 'rgba(2, 6, 23, 0.12)',
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          fontWeight: 600,
+          '&.MuiInputLabel-outlined': {
+            transform: 'translate(14px, 14px) scale(1)',
+          },
+          '&.MuiInputLabel-outlined.MuiInputLabel-shrink': {
+            transform: 'translate(14px, -9px) scale(0.75)',
+            backgroundColor: '#ffffff',
+            padding: '0 6px',
+            borderRadius: 6,
+            lineHeight: 1.2,
+          },
         },
       },
     },
@@ -49,7 +127,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 12,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          boxShadow: '0 10px 30px rgba(2, 6, 23, 0.08)',
         },
       },
     },
@@ -57,6 +135,89 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 12,
+        },
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          boxShadow: 'none',
+        },
+      },
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          borderRight: 'none',
+        },
+      },
+    },
+    MuiListItemButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+        },
+      },
+    },
+    MuiTabs: {
+      styleOverrides: {
+        root: {
+          minHeight: 44,
+        },
+        indicator: {
+          height: 3,
+          borderRadius: 999,
+        },
+      },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          minHeight: 44,
+          textTransform: 'none',
+          fontWeight: 700,
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 14,
+          boxShadow: '0 20px 60px rgba(2, 6, 23, 0.22)',
+        },
+      },
+    },
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          borderRadius: 8,
+          fontSize: '0.85rem',
+          padding: '8px 10px',
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 999,
+          fontWeight: 600,
+        },
+      },
+    },
+    MuiTableContainer: {
+      styleOverrides: {
+        root: {
+          borderRadius: 12,
+          border: '1px solid rgba(2, 6, 23, 0.10)',
+        },
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        head: {
+          fontWeight: 800,
+          color: 'rgba(2, 6, 23, 0.72)',
+          backgroundColor: 'rgba(2, 6, 23, 0.02)',
         },
       },
     },
@@ -76,7 +237,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           toastOptions={{
             duration: 4000,
             style: {
-              borderRadius: '8px',
+              borderRadius: '10px',
             },
           }}
         />

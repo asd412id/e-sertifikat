@@ -78,6 +78,22 @@ class CertificateService {
     }
   }
 
+  async getTemplateByPublicId(templateId) {
+    try {
+      const template = await CertificateTemplate.findOne({
+        where: { id: templateId, isActive: true }
+      });
+
+      if (!template) {
+        throw new Error('Template not found');
+      }
+
+      return template;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async updateTemplate(templateId, templateData, userId) {
     try {
       const template = await CertificateTemplate.findOne({

@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import DownloadCertificate from './pages/DownloadCertificate';
 import Dashboard from './pages/Dashboard';
 import Events from './pages/Events';
 import Participants from './pages/Participants';
@@ -31,6 +32,7 @@ function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/download/:slug" element={<DownloadCertificate />} />
       <Route
         path="/dashboard"
         element={

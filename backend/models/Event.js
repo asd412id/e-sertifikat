@@ -38,6 +38,38 @@ const Event = sequelize.define('Event', {
       { name: 'instansi', label: 'Instansi', type: 'text', required: false }
     ]
   },
+  publicDownloadEnabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  publicDownloadSlug: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true
+  },
+  publicDownloadIdentifierField: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  publicDownloadMatchMode: {
+    type: DataTypes.ENUM('exact', 'fuzzy'),
+    allowNull: false,
+    defaultValue: 'exact'
+  },
+  publicDownloadTemplateId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'certificate_templates',
+      key: 'id'
+    }
+  },
+  publicDownloadResultFields: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true

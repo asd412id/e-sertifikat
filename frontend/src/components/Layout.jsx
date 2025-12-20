@@ -6,7 +6,7 @@ import {
   IconButton,
   Drawer,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Box,
@@ -77,16 +77,17 @@ const Layout = ({ children }) => {
       <Box sx={{
         p: 3,
         textAlign: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        borderBottom: '1px solid rgba(0,0,0,0.12)'
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderBottom: '1px solid',
+        borderColor: 'divider'
       }}>
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-          <LogoIcon size={48} variant="white" />
+          <LogoIcon size={48} variant="gradient" />
         </Box>
-        <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold', mb: 1 }}>
+        <Typography variant="h6" sx={{ color: 'text.primary', fontWeight: 800, mb: 0.5 }}>
           e-Sertifikat
         </Typography>
-        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Sistem Manajemen Sertifikat Digital
         </Typography>
       </Box>
@@ -97,7 +98,7 @@ const Layout = ({ children }) => {
           sx={{
             p: 2,
             backgroundColor: theme.palette.grey[50],
-            borderRadius: 0,
+            borderRadius: 2,
             mb: 2,
             border: '1px solid',
             borderColor: 'divider'
@@ -121,8 +122,7 @@ const Layout = ({ children }) => {
 
       <List sx={{ px: 2, flex: 1 }}>
         {menuItems.map((item) => (
-          <ListItem
-            button
+          <ListItemButton
             key={item.text}
             onClick={() => navigate(item.path)}
             sx={{
@@ -152,14 +152,13 @@ const Layout = ({ children }) => {
                 }
               }}
             />
-          </ListItem>
+          </ListItemButton>
         ))}
       </List>
 
       <Divider />
       <List sx={{ px: 2, pb: 2 }}>
-        <ListItem
-          button
+        <ListItemButton
           onClick={handleLogout}
           sx={{
             borderRadius: 2,
@@ -182,7 +181,7 @@ const Layout = ({ children }) => {
               }
             }}
           />
-        </ListItem>
+        </ListItemButton>
       </List>
     </Box>
   );
@@ -195,8 +194,11 @@ const Layout = ({ children }) => {
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
           ml: { md: `${drawerWidth}px` },
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          borderBottom: '1px solid rgba(0,0,0,0.12)',
+          backgroundColor: 'rgba(255,255,255,0.92)',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          color: 'text.primary',
+          backdropFilter: 'blur(12px)',
           borderRadius: 0
         }}
       >
@@ -211,7 +213,7 @@ const Layout = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 'bold' }}>
-            <LogoIcon showText size={24} variant="white" />
+            <LogoIcon showText size={24} variant="gradient" />
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
@@ -221,11 +223,13 @@ const Layout = ({ children }) => {
               <Avatar sx={{
                 width: 36,
                 height: 36,
-                bgcolor: 'rgba(255,255,255,0.2)',
-                border: '2px solid rgba(255,255,255,0.3)',
-                fontWeight: 'bold'
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                border: '1px solid rgba(255,255,255,0.9)',
+                boxShadow: '0 6px 16px rgba(2, 6, 23, 0.12)',
+                fontWeight: 800
               }}>
-                {user?.fullName?.charAt(0)}
+                {user?.fullName?.charAt(0)?.toUpperCase()}
               </Avatar>
             </IconButton>
           </Box>
@@ -283,6 +287,7 @@ const Layout = ({ children }) => {
               boxSizing: 'border-box',
               width: drawerWidth,
               borderRight: 'none',
+              backgroundImage: 'linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 70%)',
             },
           }}
         >
@@ -297,7 +302,8 @@ const Layout = ({ children }) => {
               width: drawerWidth,
               borderRight: 'none',
               boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
-              borderRadius: 0
+              borderRadius: 0,
+              backgroundImage: 'linear-gradient(180deg, rgba(248,250,252,1) 0%, rgba(255,255,255,1) 70%)',
             },
           }}
           open
@@ -309,14 +315,14 @@ const Layout = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
+          p: { xs: 2, md: 3 },
           width: { md: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
           backgroundColor: '#f8fafc',
           minHeight: '100vh',
         }}
       >
-        <Container maxWidth="xl">
+        <Container maxWidth="xl" sx={{ py: { xs: 1, md: 2 } }}>
           {children}
         </Container>
       </Box>

@@ -77,6 +77,7 @@ const Events = () => {
   });
   const [fieldDialog, setFieldDialog] = useState(false);
   const [newField, setNewField] = useState({ name: '', label: '', type: 'text', required: false });
+  const [editingFieldIndex, setEditingFieldIndex] = useState(null);
 
   const navigate = useNavigate();
 
@@ -173,14 +174,45 @@ const Events = () => {
   };
 
   const handleAddField = () => {
-    if (newField.name && newField.label) {
-      setFormData({
-        ...formData,
-        participantFields: [...formData.participantFields, { ...newField }]
-      });
-      setNewField({ name: '', label: '', type: 'text', required: false });
-      setFieldDialog(false);
+    if (!newField.name || !newField.label) return;
+
+    const nextFields = [...(formData.participantFields || [])];
+    if (editingFieldIndex !== null && editingFieldIndex >= 0 && editingFieldIndex < nextFields.length) {
+      // Keep name stable on edit to avoid breaking existing participant data mapping
+      const prev = nextFields[editingFieldIndex] || {};
+      nextFields[editingFieldIndex] = {
+        ...prev,
+        label: newField.label,
+        type: newField.type,
+        required: newField.required,
+      };
+    } else {
+      nextFields.push({ ...newField });
     }
+
+    setFormData({ ...formData, participantFields: nextFields });
+    setNewField({ name: '', label: '', type: 'text', required: false });
+    setEditingFieldIndex(null);
+    setFieldDialog(false);
+  };
+
+  const handleOpenAddField = () => {
+    setEditingFieldIndex(null);
+    setNewField({ name: '', label: '', type: 'text', required: false });
+    setFieldDialog(true);
+  };
+
+  const handleOpenEditField = (index) => {
+    const field = formData.participantFields?.[index];
+    if (!field) return;
+    setEditingFieldIndex(index);
+    setNewField({
+      name: field.name || '',
+      label: field.label || '',
+      type: field.type || 'text',
+      required: !!field.required,
+    });
+    setFieldDialog(true);
   };
 
   const handleRemoveField = (index) => {
@@ -201,46 +233,53 @@ const Events = () => {
   return (
     <Layout>
       <Box>
-        {/* Header Section */}
         <Paper
           elevation={0}
           sx={{
-            p: 4,
+            p: { xs: 2.5, md: 3 },
             mb: 4,
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            borderRadius: 3
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
           }}
         >
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box>
-              <Typography variant="h3" component="h1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                Manajemen Acara
-              </Typography>
-              <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                Kelola dan atur acara serta sertifikat digital Anda
-              </Typography>
-            </Box>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                  background: 'rgba(102, 126, 234, 0.14)',
+                  border: '1px solid rgba(102, 126, 234, 0.22)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'primary.main',
+                }}
+              >
+                <EventIcon />
+              </Box>
+              <Box>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 800, mb: 0.25 }}>
+                  Manajemen Acara
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Kelola dan atur acara serta sertifikat digital Anda
+                </Typography>
+              </Box>
+            </Stack>
             <Button
               variant="contained"
               size="large"
               startIcon={<Add />}
               onClick={() => handleOpenDialog()}
-              sx={{
-                backgroundColor: 'rgba(255,255,255,0.2)',
-                '&:hover': {
-                  backgroundColor: 'rgba(255,255,255,0.3)',
-                },
-                backdropFilter: 'blur(10px)',
-                borderRadius: 2,
-                py: 1.5,
-                px: 3,
-                fontWeight: 'bold'
-              }}
+              sx={{ px: 3, py: 1.25, borderRadius: 2, fontWeight: 700 }}
             >
-              Buat Acara Baru
+              Buat Acara
             </Button>
-          </Box>
+          </Stack>
         </Paper>
 
         {events.length === 0 ? (
@@ -275,7 +314,7 @@ const Events = () => {
                 <Card
                   elevation={0}
                   sx={{
-                    borderRadius: 3,
+                    borderRadius: 2,
                     border: '1px solid',
                     borderColor: 'divider',
                     transition: 'all 0.2s ease-in-out',
@@ -295,7 +334,13 @@ const Events = () => {
                           <IconButton
                             size="small"
                             onClick={() => handleOpenDialog(event)}
-                            sx={{ ml: 1 }}
+                            sx={{
+                              ml: 1,
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              bgcolor: 'rgba(2, 6, 23, 0.02)',
+                              '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.04)' }
+                            }}
                           >
                             <Edit />
                           </IconButton>
@@ -305,7 +350,13 @@ const Events = () => {
                             size="small"
                             color="error"
                             onClick={() => handleDelete(event.id)}
-                            sx={{ ml: 0.5 }}
+                            sx={{
+                              ml: 0.75,
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              bgcolor: 'rgba(2, 6, 23, 0.02)',
+                              '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.08)' }
+                            }}
                           >
                             <Delete />
                           </IconButton>
@@ -339,43 +390,69 @@ const Events = () => {
 
                     <Divider sx={{ my: 2 }} />
 
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                      <Stack direction="row" spacing={1}>
-                        <Chip
-                          icon={<People />}
-                          label={`${event.participantCount || 0} Peserta`}
-                          size="small"
-                          variant="outlined"
-                          color="primary"
-                        />
-                        <Chip
-                          icon={<Verified />}
-                          label={`${event.templateCount || 0} Template`}
-                          size="small"
-                          variant="outlined"
-                          color="secondary"
-                        />
-                      </Stack>
-                    </Box>
+                    <Stack direction="row" spacing={1} sx={{ mb: 2.5 }}>
+                      <Chip
+                        icon={<People />}
+                        label={`${event.participantCount || 0} Peserta`}
+                        size="small"
+                        variant="filled"
+                        sx={{
+                          height: 28,
+                          borderRadius: 10,
+                          bgcolor: 'rgba(102, 126, 234, 0.12)',
+                          color: 'primary.main',
+                          border: '1px solid rgba(102, 126, 234, 0.22)',
+                          '& .MuiChip-icon': { color: 'primary.main' },
+                          '& .MuiChip-label': { px: 1.0, fontWeight: 700 }
+                        }}
+                      />
+                      <Chip
+                        icon={<Verified />}
+                        label={`${event.templateCount || 0} Template`}
+                        size="small"
+                        variant="filled"
+                        sx={{
+                          height: 28,
+                          borderRadius: 10,
+                          bgcolor: 'rgba(118, 75, 162, 0.10)',
+                          color: 'secondary.main',
+                          border: '1px solid rgba(118, 75, 162, 0.18)',
+                          '& .MuiChip-icon': { color: 'secondary.main' },
+                          '& .MuiChip-label': { px: 1.0, fontWeight: 700 }
+                        }}
+                      />
+                    </Stack>
                   </CardContent>
 
                   <CardActions sx={{ px: 3, pb: 3 }}>
                     <Stack direction="row" spacing={1} width="100%">
                       <Button
                         variant="outlined"
-                        size="small"
+                        size="medium"
                         startIcon={<People />}
                         onClick={() => navigate(`/participants/${event.id}`)}
-                        sx={{ flex: 1, borderRadius: 2 }}
+                        sx={{
+                          flex: 1,
+                          minHeight: 40,
+                          borderRadius: 2,
+                          fontWeight: 700,
+                          bgcolor: 'rgba(2, 6, 23, 0.01)',
+                          '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.03)' }
+                        }}
                       >
                         Peserta
                       </Button>
                       <Button
                         variant="contained"
-                        size="small"
+                        size="medium"
                         startIcon={<Settings />}
                         onClick={() => navigate(`/events/${event.id}/certificates`)}
-                        sx={{ flex: 1, borderRadius: 2 }}
+                        sx={{
+                          flex: 1,
+                          minHeight: 40,
+                          borderRadius: 2,
+                          fontWeight: 700
+                        }}
                       >
                         Sertifikat
                       </Button>
@@ -484,7 +561,7 @@ const Events = () => {
                     <Button
                       variant="outlined"
                       startIcon={<Add />}
-                      onClick={() => setFieldDialog(true)}
+                      onClick={handleOpenAddField}
                       sx={{ borderRadius: 2 }}
                     >
                       Tambah Field
@@ -499,6 +576,14 @@ const Events = () => {
                             secondary={`${field.name} (${field.type})${field.required ? ' - Wajib' : ''}`}
                           />
                           <ListItemSecondaryAction>
+                            <IconButton
+                              edge="end"
+                              onClick={() => handleOpenEditField(index)}
+                              disabled={field.name === 'nama'}
+                              sx={{ mr: 0.5 }}
+                            >
+                              <Edit />
+                            </IconButton>
                             <IconButton
                               edge="end"
                               onClick={() => handleRemoveField(index)}
@@ -533,7 +618,11 @@ const Events = () => {
         {/* Dialog Tambah Field */}
         <Dialog
           open={fieldDialog}
-          onClose={() => setFieldDialog(false)}
+          onClose={() => {
+            setFieldDialog(false);
+            setEditingFieldIndex(null);
+            setNewField({ name: '', label: '', type: 'text', required: false });
+          }}
           PaperProps={{
             sx: {
               borderRadius: 3,
@@ -542,7 +631,7 @@ const Events = () => {
         >
           <DialogTitle>
             <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-              Tambah Field Peserta
+              {editingFieldIndex !== null ? 'Edit Field Peserta' : 'Tambah Field Peserta'}
             </Typography>
           </DialogTitle>
           <DialogContent sx={{ px: 3, py: 2 }}>
@@ -554,6 +643,7 @@ const Events = () => {
                   onChange={(e) => setNewField({ ...newField, name: e.target.value })}
                   fullWidth
                   helperText="Gunakan huruf kecil, tanpa spasi (contoh: 'jabatan', 'no_hp')"
+                  disabled={editingFieldIndex !== null}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -594,7 +684,11 @@ const Events = () => {
           </DialogContent>
           <DialogActions sx={{ px: 3, py: 2 }}>
             <Button
-              onClick={() => setFieldDialog(false)}
+              onClick={() => {
+                setFieldDialog(false);
+                setEditingFieldIndex(null);
+                setNewField({ name: '', label: '', type: 'text', required: false });
+              }}
               sx={{ borderRadius: 2 }}
             >
               Batal
@@ -604,7 +698,7 @@ const Events = () => {
               variant="contained"
               sx={{ borderRadius: 2, px: 3 }}
             >
-              Tambah Field
+              {editingFieldIndex !== null ? 'Simpan' : 'Tambah Field'}
             </Button>
           </DialogActions>
         </Dialog>

@@ -3,8 +3,425 @@ const { Event, Participant } = require('../models');
 const path = require('path');
 const fs = require('fs').promises;
 const archiver = require('archiver');
+const { Op, where, literal } = require('sequelize');
 
 class CertificateController {
+
+  async getPublicDownloadPortalInfo(request, reply) {
+    try {
+      const { slug } = request.params;
+
+      const event = await Event.findOne({
+        where: {
+          publicDownloadSlug: slug,
+          isActive: true
+        },
+        attributes: [
+          'id',
+          'title',
+          'publicDownloadEnabled',
+          'publicDownloadIdentifierField',
+          'publicDownloadMatchMode',
+          'participantFields',
+          'publicDownloadResultFields'
+        ]
+      });
+
+      if (!event) {
+        return reply.status(404).send({
+          error: 'Portal not found'
+        });
+      }
+
+      if (!event.publicDownloadEnabled) {
+        return reply.status(403).send({
+          error: 'Portal is disabled'
+        });
+      }
+
+      if (!event.publicDownloadIdentifierField) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (identifier field missing)'
+        });
+      }
+
+      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
+      const identifierLabel = fields.find(f => f?.name === event.publicDownloadIdentifierField)?.label
+        || event.publicDownloadIdentifierField;
+      const resultFields = Array.isArray(event.publicDownloadResultFields)
+        ? event.publicDownloadResultFields
+        : null;
+      const resultFieldLabels = resultFields
+        ? resultFields.reduce((acc, name) => {
+          const label = fields.find(f => f?.name === name)?.label || name;
+          acc[name] = label;
+          return acc;
+        }, {})
+        : null;
+
+      reply.send({
+        success: true,
+        data: {
+          event: {
+            id: event.id,
+            title: event.title
+          },
+          identifierField: event.publicDownloadIdentifierField,
+          identifierLabel,
+          matchMode: event.publicDownloadMatchMode
+          ,
+          resultFields,
+          resultFieldLabels
+        }
+      });
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
+    }
+  }
+
+  async publicSearchParticipants(request, reply) {
+    try {
+      const { slug } = request.params;
+      const { identifier } = request.body || {};
+
+      if (!identifier || String(identifier).trim().length === 0) {
+        return reply.status(400).send({
+          error: 'Identifier is required'
+        });
+      }
+
+      const event = await Event.findOne({
+        where: {
+          publicDownloadSlug: slug,
+          isActive: true
+        }
+      });
+
+      if (!event) {
+        return reply.status(404).send({
+          error: 'Portal not found'
+        });
+      }
+
+      if (!event.publicDownloadEnabled) {
+        return reply.status(403).send({
+          error: 'Portal is disabled'
+        });
+      }
+
+      if (!event.publicDownloadIdentifierField) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (identifier field missing)'
+        });
+      }
+
+      const input = String(identifier).trim();
+      const identifierField = event.publicDownloadIdentifierField;
+      const matchMode = event.publicDownloadMatchMode || 'exact';
+
+      const fields = Array.isArray(event.participantFields) ? event.participantFields : [];
+      const resultFields = Array.isArray(event.publicDownloadResultFields)
+        ? event.publicDownloadResultFields
+        : null;
+
+      const allowedFields = Array.isArray(event.participantFields)
+        ? event.participantFields.map(f => f?.name).filter(Boolean)
+        : [];
+      if (!identifierField || !allowedFields.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (invalid identifier field)'
+        });
+      }
+
+      const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${identifierField}')`);
+      const loweredInput = input.toLowerCase();
+
+      const participantWhere = {
+        eventId: event.id,
+        [Op.and]: [
+          matchMode === 'fuzzy'
+            ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
+            : where(loweredExtract, { [Op.eq]: loweredInput })
+        ]
+      };
+
+      const participants = await Participant.findAll({
+        where: participantWhere,
+        limit: matchMode === 'fuzzy' ? 10 : 5,
+        order: [['createdAt', 'DESC']]
+      });
+
+      const results = (participants || []).map((p) => {
+        const identifierValueRaw = p?.data?.[identifierField];
+        const identifierValue = identifierValueRaw == null ? '' : String(identifierValueRaw);
+        const displayName = p?.data?.nama || p?.data?.name || p?.data?.fullname || `Participant #${p.id}`;
+
+        const displayFields = resultFields
+          ? resultFields.map((name) => {
+            const label = fields.find(f => f?.name === name)?.label || name;
+            const raw = p?.data?.[name];
+            const value = raw == null ? '' : String(raw);
+            return { name, label, value };
+          })
+          : null;
+        return {
+          id: p.id,
+          name: displayName,
+          identifierValue,
+          createdAt: p.createdAt,
+          data: {
+            nama: p?.data?.nama,
+            name: p?.data?.name
+          },
+          displayFields
+        };
+      });
+
+      reply.send({
+        success: true,
+        data: {
+          identifierField,
+          matchMode,
+          query: input,
+          results,
+          resultFields
+        }
+      });
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
+    }
+  }
+
+  async publicDownloadCertificatePDFByParticipant(request, reply) {
+    try {
+      const { slug, participantId } = request.params;
+      const { identifier } = request.body || {};
+
+      if (!identifier || String(identifier).trim().length === 0) {
+        return reply.status(400).send({
+          error: 'Identifier is required'
+        });
+      }
+
+      const event = await Event.findOne({
+        where: {
+          publicDownloadSlug: slug,
+          isActive: true
+        }
+      });
+
+      if (!event) {
+        return reply.status(404).send({
+          error: 'Portal not found'
+        });
+      }
+
+      if (!event.publicDownloadEnabled) {
+        return reply.status(403).send({
+          error: 'Portal is disabled'
+        });
+      }
+
+      if (!event.publicDownloadIdentifierField) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (identifier field missing)'
+        });
+      }
+
+      if (!event.publicDownloadTemplateId) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (template missing)'
+        });
+      }
+
+      const input = String(identifier).trim();
+      const identifierField = event.publicDownloadIdentifierField;
+      const matchMode = event.publicDownloadMatchMode || 'exact';
+
+      const allowedFields = Array.isArray(event.participantFields)
+        ? event.participantFields.map(f => f?.name).filter(Boolean)
+        : [];
+      if (!identifierField || !allowedFields.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (invalid identifier field)'
+        });
+      }
+
+      const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${identifierField}')`);
+      const loweredInput = input.toLowerCase();
+
+      const participantWhere = {
+        id: parseInt(participantId),
+        eventId: event.id,
+        [Op.and]: [
+          matchMode === 'fuzzy'
+            ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
+            : where(loweredExtract, { [Op.eq]: loweredInput })
+        ]
+      };
+
+      const participant = await Participant.findOne({ where: participantWhere });
+      if (!participant) {
+        return reply.status(404).send({
+          error: 'Participant not found'
+        });
+      }
+
+      const template = await CertificateService.getTemplateByPublicId(
+        parseInt(event.publicDownloadTemplateId)
+      );
+
+      if (!template || template.eventId !== event.id) {
+        return reply.status(400).send({
+          error: 'Template not found or not associated with this event'
+        });
+      }
+
+      const PuppeteerPDFService = require('../services/PuppeteerPDFService');
+      const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
+
+      const participantName = participant.data?.nama || participant.data?.name || 'participant';
+      const sanitizedName = String(participantName)
+        .replace(/[^-\u007E\s-]/g, '')
+        .replace(/[^\w\s-]/g, '_')
+        .replace(/\s+/g, '_')
+        .substring(0, 50);
+      const pdfFileName = `sertifikat_${sanitizedName}_${participant.id}.pdf`;
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${pdfFileName}"`);
+      reply.header('Content-Length', pdfBuffer.length);
+      reply.header('Access-Control-Allow-Origin', '*');
+      reply.send(pdfBuffer);
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
+    }
+  }
+
+  async publicDownloadCertificatePDF(request, reply) {
+    try {
+      const { slug } = request.params;
+      const { identifier } = request.body || {};
+
+      if (!identifier || String(identifier).trim().length === 0) {
+        return reply.status(400).send({
+          error: 'Identifier is required'
+        });
+      }
+
+      const event = await Event.findOne({
+        where: {
+          publicDownloadSlug: slug,
+          isActive: true
+        }
+      });
+
+      if (!event) {
+        return reply.status(404).send({
+          error: 'Portal not found'
+        });
+      }
+
+      if (!event.publicDownloadEnabled) {
+        return reply.status(403).send({
+          error: 'Portal is disabled'
+        });
+      }
+
+      if (!event.publicDownloadIdentifierField) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (identifier field missing)'
+        });
+      }
+
+      if (!event.publicDownloadTemplateId) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (template missing)'
+        });
+      }
+
+      const input = String(identifier).trim();
+      const identifierField = event.publicDownloadIdentifierField;
+      const matchMode = event.publicDownloadMatchMode || 'exact';
+
+      // Validate identifier field against event configuration to prevent invalid lookups
+      const allowedFields = Array.isArray(event.participantFields)
+        ? event.participantFields.map(f => f?.name).filter(Boolean)
+        : [];
+      if (!identifierField || !allowedFields.includes(identifierField) || !/^[a-zA-Z0-9_]+$/.test(identifierField)) {
+        return reply.status(400).send({
+          error: 'Portal is not configured (invalid identifier field)'
+        });
+      }
+
+      // Postgres JSONB lookup: LOWER("Participant"."data"->>'field')
+      const loweredExtract = literal(`LOWER(\"Participant\".\"data\"->>'${identifierField}')`);
+      const loweredInput = input.toLowerCase();
+
+      const participantWhere = {
+        eventId: event.id,
+        [Op.and]: [
+          matchMode === 'fuzzy'
+            ? where(loweredExtract, { [Op.like]: `%${loweredInput}%` })
+            : where(loweredExtract, { [Op.eq]: loweredInput })
+        ]
+      };
+
+      const participants = await Participant.findAll({
+        where: participantWhere,
+        limit: 2,
+        order: [['createdAt', 'DESC']]
+      });
+
+      if (!participants || participants.length === 0) {
+        return reply.status(404).send({
+          error: 'Participant not found'
+        });
+      }
+
+      if (participants.length > 1) {
+        return reply.status(409).send({
+          error: 'Multiple participants matched. Please refine your input.'
+        });
+      }
+
+      const participant = participants[0];
+
+      // Ensure template exists
+      const template = await CertificateService.getTemplateByPublicId(
+        parseInt(event.publicDownloadTemplateId)
+      );
+
+      if (!template || template.eventId !== event.id) {
+        return reply.status(400).send({
+          error: 'Template not found or not associated with this event'
+        });
+      }
+
+      const PuppeteerPDFService = require('../services/PuppeteerPDFService');
+      const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
+
+      const participantName = participant.data?.nama || participant.data?.name || 'participant';
+      const sanitizedName = String(participantName).replace(/[^-\u007E\s-]/g, '').replace(/[^\w\s-]/g, '_').replace(/\s+/g, '_').substring(0, 50);
+      const pdfFileName = `sertifikat_${sanitizedName}_${participant.id}.pdf`;
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${pdfFileName}"`);
+      reply.header('Content-Length', pdfBuffer.length);
+      reply.header('Access-Control-Allow-Origin', '*');
+      reply.send(pdfBuffer);
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
+    }
+  }
 
   async createTemplate(request, reply) {
     try {

@@ -2,32 +2,45 @@ const CertificateController = require('../controllers/CertificateController');
 const { authenticateToken } = require('../middleware/auth');
 
 async function certificateRoutes(fastify, options) {
-  // All certificate routes require authentication
-  fastify.addHook('preHandler', authenticateToken);
+  // Public portal endpoints (no auth)
+  fastify.get('/public/:slug', CertificateController.getPublicDownloadPortalInfo);
+  fastify.post('/public/:slug/search', CertificateController.publicSearchParticipants);
+  fastify.post('/public/:slug/participants/:participantId/download-pdf', CertificateController.publicDownloadCertificatePDFByParticipant);
+  fastify.post('/public/:slug/download-pdf', CertificateController.publicDownloadCertificatePDF);
 
-  // Template management
-  fastify.post('/templates', CertificateController.createTemplate);
-  fastify.get('/events/:eventId/templates', CertificateController.getTemplates);
-  fastify.get('/templates/:id', CertificateController.getTemplateById);
-  fastify.put('/templates/:id', CertificateController.updateTemplate);
-  fastify.delete('/templates/:id', CertificateController.deleteTemplate);
+  // Public legacy file download route (no auth)
+  fastify.get('/download/:filename', CertificateController.downloadCertificate);
 
-  // Generate and download individual certificate (legacy - will be deprecated)
-  fastify.post('/templates/:templateId/participants/:participantId/generate-download',
-    CertificateController.generateAndDownloadCertificate);
-    
-  // New endpoint for individual certificate download using bulk generation approach
-  fastify.post('/templates/:templateId/participants/:participantId/download-pdf',
-    CertificateController.downloadIndividualCertificatePDF);
+  // Template management (auth)
+  fastify.post('/templates', { preHandler: authenticateToken }, CertificateController.createTemplate);
+  fastify.get('/events/:eventId/templates', { preHandler: authenticateToken }, CertificateController.getTemplates);
+  fastify.get('/templates/:id', { preHandler: authenticateToken }, CertificateController.getTemplateById);
+  fastify.put('/templates/:id', { preHandler: authenticateToken }, CertificateController.updateTemplate);
+  fastify.delete('/templates/:id', { preHandler: authenticateToken }, CertificateController.deleteTemplate);
 
-  // File upload and download
-  fastify.post('/upload-background', CertificateController.uploadBackgroundImage);
+  // Generate and download individual certificate (legacy - will be deprecated) (auth)
+  fastify.post(
+    '/templates/:templateId/participants/:participantId/generate-download',
+    { preHandler: authenticateToken },
+    CertificateController.generateAndDownloadCertificate
+  );
 
-  // Public download route (no auth required for download)
-  fastify.get('/download/:filename', { preHandler: [] }, CertificateController.downloadCertificate);
+  // New endpoint for individual certificate download using bulk generation approach (auth)
+  fastify.post(
+    '/templates/:templateId/participants/:participantId/download-pdf',
+    { preHandler: authenticateToken },
+    CertificateController.downloadIndividualCertificatePDF
+  );
 
-  // Bulk download certificates as single PDF (replacing ZIP download)
-  fastify.post('/events/:eventId/templates/:templateId/bulk-download-pdf', CertificateController.bulkDownloadCertificatesPDF);
+  // File upload (auth)
+  fastify.post('/upload-background', { preHandler: authenticateToken }, CertificateController.uploadBackgroundImage);
+
+  // Bulk download certificates as single PDF (auth)
+  fastify.post(
+    '/events/:eventId/templates/:templateId/bulk-download-pdf',
+    { preHandler: authenticateToken },
+    CertificateController.bulkDownloadCertificatesPDF
+  );
 }
 
 module.exports = certificateRoutes;

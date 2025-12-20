@@ -12,12 +12,16 @@ import {
   Stack,
   Avatar,
   Divider,
+  IconButton,
+  InputAdornment,
 } from '@mui/material';
 import {
   LoginOutlined,
   EmailOutlined,
   LockOutlined,
   PersonAddOutlined,
+  VisibilityOutlined,
+  VisibilityOffOutlined,
 } from '@mui/icons-material';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +34,7 @@ const Login = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -62,11 +67,14 @@ const Login = () => {
     setLoading(false);
   };
 
+  const canSubmit = Boolean(formData.email && formData.password && !loading);
+
   return (
     <Box
       sx={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background:
+          'radial-gradient(900px 420px at 15% 10%, rgba(102, 126, 234, 0.16) 0%, rgba(102, 126, 234, 0) 60%), radial-gradient(900px 420px at 90% 20%, rgba(118, 75, 162, 0.12) 0%, rgba(118, 75, 162, 0) 55%), #f8fafc',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -79,43 +87,44 @@ const Login = () => {
           sx={{
             borderRadius: 4,
             overflow: 'hidden',
-            border: '1px solid rgba(255,255,255,0.1)',
-            backdropFilter: 'blur(20px)',
-            background: 'rgba(255,255,255,0.95)',
+            border: '1px solid',
+            borderColor: 'divider',
+            boxShadow: '0 24px 80px rgba(2, 6, 23, 0.10)',
+            backgroundColor: 'background.paper',
           }}
         >
-          {/* Header */}
           <Box
             sx={{
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: 'white',
-              p: 4,
+              backgroundColor: 'transparent',
+              color: 'text.primary',
+              p: { xs: 3.5, sm: 4 },
               textAlign: 'center',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
             }}
           >
             <Avatar
               sx={{
-                width: 80,
-                height: 80,
+                width: 76,
+                height: 76,
                 mx: 'auto',
                 mb: 2,
-                bgcolor: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(10px)',
-                border: '2px solid rgba(255,255,255,0.3)',
+                bgcolor: 'rgba(102, 126, 234, 0.14)',
+                border: '1px solid rgba(102, 126, 234, 0.22)',
+                color: 'primary.main',
               }}
             >
               <LoginOutlined sx={{ fontSize: 40 }} />
             </Avatar>
-            <Typography component="h1" variant="h3" sx={{ fontWeight: 'bold', mb: 1 }}>
+            <Typography component="h1" variant="h4" sx={{ fontWeight: 800, mb: 0.5, letterSpacing: -0.4 }}>
               e-Sertifikat
             </Typography>
-            <Typography variant="h6" sx={{ opacity: 0.9 }}>
-              Masuk ke Akun Anda
+            <Typography variant="body1" sx={{ opacity: 0.92 }}>
+              Masuk untuk mengelola event & sertifikat
             </Typography>
           </Box>
 
-          {/* Form */}
-          <Box sx={{ p: 4 }}>
+          <Box sx={{ p: { xs: 3, sm: 4 } }}>
             {error && (
               <Alert
                 severity="error"
@@ -132,7 +141,7 @@ const Login = () => {
             )}
 
             <Box component="form" onSubmit={handleSubmit}>
-              <Stack spacing={3}>
+              <Stack spacing={2.5}>
                 <TextField
                   required
                   fullWidth
@@ -144,20 +153,13 @@ const Login = () => {
                   value={formData.email}
                   onChange={handleChange}
                   disabled={loading}
+                  placeholder="nama@domain.com"
                   InputProps={{
-                    startAdornment: <EmailOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
-                  }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 2,
-                      backgroundColor: 'rgba(0,0,0,0.02)',
-                      '&:hover': {
-                        backgroundColor: 'rgba(0,0,0,0.04)',
-                      },
-                      '&.Mui-focused': {
-                        backgroundColor: 'transparent',
-                      },
-                    },
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailOutlined sx={{ color: 'text.secondary' }} />
+                      </InputAdornment>
+                    ),
                   }}
                 />
 
@@ -166,26 +168,31 @@ const Login = () => {
                   fullWidth
                   name="password"
                   label="Kata Sandi"
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   id="password"
                   autoComplete="current-password"
                   value={formData.password}
                   onChange={handleChange}
                   disabled={loading}
+                  placeholder="Masukkan kata sandi"
                   InputProps={{
-                    startAdornment: <LockOutlined sx={{ mr: 1, color: 'text.secondary' }} />,
-                  }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 2,
-                      backgroundColor: 'rgba(0,0,0,0.02)',
-                      '&:hover': {
-                        backgroundColor: 'rgba(0,0,0,0.04)',
-                      },
-                      '&.Mui-focused': {
-                        backgroundColor: 'transparent',
-                      },
-                    },
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <LockOutlined sx={{ color: 'text.secondary' }} />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          onClick={() => setShowPassword(v => !v)}
+                          edge="end"
+                          disabled={loading}
+                          aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                        >
+                          {showPassword ? <VisibilityOffOutlined /> : <VisibilityOutlined />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
                   }}
                 />
 
@@ -194,24 +201,14 @@ const Login = () => {
                   fullWidth
                   variant="contained"
                   size="large"
-                  disabled={loading}
+                  disabled={!canSubmit}
                   startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <LoginOutlined />}
                   sx={{
-                    mt: 2,
-                    py: 1.5,
+                    mt: 1,
+                    py: 1.35,
                     borderRadius: 2,
-                    fontSize: '1.1rem',
-                    fontWeight: 600,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    textTransform: 'none',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: '0 8px 25px rgba(102, 126, 234, 0.3)',
-                    },
-                    '&:disabled': {
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      opacity: 0.7,
-                    },
+                    fontSize: '1.05rem',
+                    fontWeight: 700,
                   }}
                 >
                   {loading ? 'Sedang Masuk...' : 'Masuk'}
