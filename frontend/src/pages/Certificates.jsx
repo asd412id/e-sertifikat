@@ -1112,7 +1112,16 @@ const Certificates = () => {
         if (el.verticalAlign !== 'bottom' && el.verticalAlign !== 'middle') return;
         const node = shapeRefs.current[el.id];
         if (!node) return;
-        const newHRaw = node.getClientRect ? node.getClientRect().height : node.height();
+        let newHRaw;
+        if (node.getClientRect) {
+          try {
+            newHRaw = node.getClientRect({ skipShadow: true }).height;
+          } catch (e) {
+            newHRaw = node.getClientRect().height;
+          }
+        } else {
+          newHRaw = node.height();
+        }
         const newH = Math.round((Number(newHRaw) || 0) * 10) / 10;
         const baseLineHeight = (el.fontSize || 24) * ((typeof el.lineHeight === 'number' && el.lineHeight > 0) ? el.lineHeight : 1);
         const prevH = (typeof el._measuredHeight === 'number' && el._measuredHeight > 0)
@@ -1455,6 +1464,15 @@ const Certificates = () => {
                     disabled={!publicDownloadSettings.enabled}
                     helperText="Kosongkan untuk auto-generate. Format: huruf kecil/angka dan '-' (tanpa spasi)."
                     size="small"
+                    sx={{
+                      '& .MuiOutlinedInput-input': {
+                        py: 1.25,
+                        lineHeight: 1.5,
+                      },
+                      '& .MuiOutlinedInput-input::placeholder': {
+                        lineHeight: 1.5,
+                      },
+                    }}
                   />
                 </Stack>
               </Box>

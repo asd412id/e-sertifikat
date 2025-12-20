@@ -197,12 +197,13 @@ const DownloadCertificate = () => {
         background:
           'radial-gradient(900px 420px at 15% 10%, rgba(102, 126, 234, 0.16) 0%, rgba(102, 126, 234, 0) 60%), radial-gradient(900px 420px at 90% 20%, rgba(118, 75, 162, 0.12) 0%, rgba(118, 75, 162, 0) 55%), #f8fafc',
         display: 'flex',
-        alignItems: 'center',
+        alignItems: { xs: 'flex-start', sm: 'center' },
         justifyContent: 'center',
-        p: 2,
+        p: { xs: 1.25, sm: 2 },
+        py: { xs: 2, sm: 2 },
       }}
     >
-      <Container component="main" maxWidth="sm">
+      <Container component="main" maxWidth="sm" disableGutters sx={{ px: { xs: 0, sm: 2 } }}>
         <Paper
           elevation={0}
           sx={{
@@ -218,7 +219,7 @@ const DownloadCertificate = () => {
             sx={{
               backgroundColor: 'transparent',
               color: 'text.primary',
-              p: 4,
+              p: { xs: 3, sm: 4 },
               textAlign: 'center',
               borderBottom: '1px solid',
               borderColor: 'divider',
@@ -226,8 +227,8 @@ const DownloadCertificate = () => {
           >
             <Avatar
               sx={{
-                width: 80,
-                height: 80,
+                width: { xs: 74, sm: 80 },
+                height: { xs: 74, sm: 80 },
                 mx: 'auto',
                 mb: 2,
                 bgcolor: 'rgba(102, 126, 234, 0.14)',
@@ -245,7 +246,7 @@ const DownloadCertificate = () => {
             </Typography>
           </Box>
 
-          <Box sx={{ p: 4 }}>
+          <Box sx={{ p: { xs: 3, sm: 4 } }}>
             {loading ? (
               <Box display="flex" justifyContent="center" alignItems="center" py={6}>
                 <CircularProgress />
@@ -350,23 +351,29 @@ const DownloadCertificate = () => {
                                       borderRadius: 2,
                                       p: 1.5,
                                       display: 'flex',
-                                      alignItems: 'center',
+                                      flexDirection: { xs: 'column', sm: 'row' },
+                                      alignItems: { xs: 'stretch', sm: 'center' },
                                       justifyContent: 'space-between',
                                       gap: 2,
                                     }}
                                   >
                                     <Box sx={{ minWidth: 0 }}>
-                                      <Typography sx={{ fontWeight: 800 }} noWrap>
+                                      <Typography sx={{ fontWeight: 800, whiteSpace: { xs: 'normal', sm: 'nowrap' } }}>
                                         {r.name}
                                       </Typography>
                                       {Array.isArray(r.displayFields) && r.displayFields.length > 0 ? (
                                         r.displayFields.map((f) => (
-                                          <Typography key={f.name} variant="body2" color="text.secondary" noWrap>
+                                          <Typography
+                                            key={f.name}
+                                            variant="body2"
+                                            color="text.secondary"
+                                            sx={{ whiteSpace: { xs: 'normal', sm: 'nowrap' } }}
+                                          >
                                             {f.label}: {f.value}
                                           </Typography>
                                         ))
                                       ) : (
-                                        <Typography variant="body2" color="text.secondary" noWrap>
+                                        <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: { xs: 'normal', sm: 'nowrap' } }}>
                                           {r.identifierValue}
                                         </Typography>
                                       )}
@@ -377,7 +384,13 @@ const DownloadCertificate = () => {
                                       onClick={() => handleDownloadParticipant(r)}
                                       disabled={!!downloadingId || searching}
                                       startIcon={downloadingId === r.id ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
-                                      sx={{ borderRadius: 2, fontWeight: 800, whiteSpace: 'nowrap' }}
+                                      sx={{
+                                        borderRadius: 2,
+                                        fontWeight: 800,
+                                        whiteSpace: 'nowrap',
+                                        width: { xs: '100%', sm: 'auto' },
+                                        alignSelf: { xs: 'stretch', sm: 'center' },
+                                      }}
                                     >
                                       {downloadingId === r.id ? 'Mengunduh...' : 'Download'}
                                     </Button>

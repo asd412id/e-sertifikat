@@ -518,15 +518,15 @@ class PuppeteerPDFService {
             // Kompensasi kecil agar posisi teks PDF sejajar dengan Konva (baseline metrics berbeda)
             // Catatan: untuk kasus beda "sedikit", gunakan offset pecahan agar tidak terlalu agresif.
             const fs = element.fontSize || 24;
-            let offsetY = 0;
-            // NOTE: For wrapped/multi-line text, baseline compensation tends to over-shift.
-            // Keep it at 0 so the top position matches the editor more closely.
+            // Baseline between Konva(canvas) and Chromium(PDF) can differ ~1px.
+            // Apply a small global upward nudge, then apply mild, additive adjustments by font size.
+            let offsetY = -3;
             if (!element.wordWrap) {
-              if (fs >= 28) offsetY = -0.5;
-              if (fs >= 40) offsetY = -1;
-              if (fs >= 56) offsetY = -1.5;
+              if (fs >= 28) offsetY -= 0.2;
+              if (fs >= 40) offsetY -= 0.3;
+              if (fs >= 56) offsetY -= 0.4;
               // untuk middle, sedikit naik agar visually center tetap rapih
-              if (element.verticalAlign === 'middle') offsetY -= 0.5;
+              if (element.verticalAlign === 'middle') offsetY -= 0.3;
             }
             styles.push(`top: ${baseY + offsetY}px`);
 
@@ -544,7 +544,8 @@ class PuppeteerPDFService {
             }
 
             if (element.fontSize) {
-              styles.push(`line-height: ${Math.round(element.fontSize * lineHeightFactor)}px`);
+              const lh = Math.round((element.fontSize * lineHeightFactor) * 10) / 10;
+              styles.push(`line-height: ${lh}px`);
             }
 
             styles.push('overflow: visible');
