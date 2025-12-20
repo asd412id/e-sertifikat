@@ -73,13 +73,13 @@ const Dashboard = () => {
   // Data statistik dengan styling modern
   const statsData = [
     {
-      title: 'Total Acara',
+      title: 'Total Kegiatan',
       value: stats.totalEvents,
       icon: <Event sx={{ fontSize: 40 }} />,
       color: '#2196F3',
       bgColor: '#E3F2FD',
       gradient: 'linear-gradient(135deg, #2196F3 0%, #1976D2 100%)',
-      description: 'Jumlah acara yang telah dibuat'
+      description: 'Jumlah kegiatan yang telah dibuat'
     },
     {
       title: 'Total Peserta',
@@ -188,7 +188,7 @@ const Dashboard = () => {
                   Dashboard
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Ringkasan acara & sertifikat Anda
+                  Ringkasan kegiatan & sertifikat Anda
                 </Typography>
               </Box>
             </Stack>
@@ -204,7 +204,7 @@ const Dashboard = () => {
                 fontWeight: 700,
               }}
             >
-              Buat Acara
+              Buat Kegiatan
             </Button>
           </Stack>
         </Paper>
@@ -252,10 +252,10 @@ const Dashboard = () => {
             </Box>
             <Box>
               <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
-                Acara Terbaru
+                Kegiatan Terbaru
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Acara yang baru saja dibuat atau diperbarui
+                Kegiatan yang baru saja dibuat atau diperbarui
               </Typography>
             </Box>
           </Stack>
@@ -329,10 +329,10 @@ const Dashboard = () => {
                 <EmojiEvents sx={{ fontSize: 40 }} />
               </Avatar>
               <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-                Belum Ada Acara
+                Belum Ada Kegiatan
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                Buat acara pertama Anda untuk memulai mengelola sertifikat digital
+                Buat kegiatan pertama Anda untuk memulai mengelola sertifikat digital
               </Typography>
               <Button
                 variant="contained"
@@ -341,7 +341,7 @@ const Dashboard = () => {
                 onClick={() => navigate('/events')}
                 sx={{ px: 4, py: 1.5, borderRadius: 2, fontWeight: 700 }}
               >
-                Buat Acara Pertama
+                Buat Kegiatan Pertama
               </Button>
             </Box>
           )}

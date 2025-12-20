@@ -288,6 +288,7 @@ const Login = () => {
                         endAdornment: (
                           <InputAdornment position="end">
                             <IconButton
+                              type="button"
                               onClick={() => setShowPassword(v => !v)}
                               edge="end"
                               disabled={loading}

@@ -82,7 +82,7 @@ const Events = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'Kelola Acara - e-Sertifikat';
+    document.title = 'Kelola Kegiatan - e-Sertifikat';
     fetchEvents();
   }, []);
 
@@ -98,7 +98,7 @@ const Events = () => {
         limit: response.data.limit || 10
       });
     } catch (error) {
-      toast.error('Gagal memuat data acara');
+      toast.error('Gagal memuat data kegiatan');
     } finally {
       setLoading(false);
     }
@@ -149,10 +149,10 @@ const Events = () => {
     try {
       if (selectedEvent) {
         await eventService.updateEvent(selectedEvent.id, formData);
-        toast.success('Acara berhasil diperbarui');
+        toast.success('Kegiatan berhasil diperbarui');
       } else {
         await eventService.createEvent(formData);
-        toast.success('Acara berhasil dibuat');
+        toast.success('Kegiatan berhasil dibuat');
       }
       handleCloseDialog();
       fetchEvents();
@@ -162,13 +162,13 @@ const Events = () => {
   };
 
   const handleDelete = async (eventId) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus acara ini?')) {
+    if (window.confirm('Apakah Anda yakin ingin menghapus kegiatan ini?')) {
       try {
         await eventService.deleteEvent(eventId);
-        toast.success('Acara berhasil dihapus');
+        toast.success('Kegiatan berhasil dihapus');
         fetchEvents();
       } catch (error) {
-        toast.error('Gagal menghapus acara');
+        toast.error('Gagal menghapus kegiatan');
       }
     }
   };
@@ -272,10 +272,10 @@ const Events = () => {
               </Box>
               <Box>
                 <Typography variant="h4" component="h1" sx={{ fontWeight: 800, mb: 0.25 }}>
-                  Manajemen Acara
+                  Manajemen Kegiatan
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Kelola dan atur acara serta sertifikat digital Anda
+                  Kelola dan atur kegiatan serta sertifikat digital Anda
                 </Typography>
               </Box>
             </Stack>
@@ -286,7 +286,7 @@ const Events = () => {
               onClick={() => handleOpenDialog()}
               sx={{ px: 3, py: 1.25, borderRadius: 2, fontWeight: 700 }}
             >
-              Buat Acara
+              Buat Kegiatan
             </Button>
           </Stack>
         </Paper>
@@ -299,10 +299,10 @@ const Events = () => {
                   <EventIcon sx={{ fontSize: 40 }} />
                 </Avatar>
                 <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
-                  Belum Ada Acara
+                  Belum Ada Kegiatan
                 </Typography>
                 <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
-                  Mulai dengan membuat acara pertama Anda untuk mengelola sertifikat digital
+                  Mulai dengan membuat kegiatan pertama Anda untuk mengelola sertifikat digital
                 </Typography>
                 <Button
                   variant="contained"
@@ -311,7 +311,7 @@ const Events = () => {
                   onClick={() => handleOpenDialog()}
                   sx={{ borderRadius: 2, py: 1.5, px: 4 }}
                 >
-                  Buat Acara Pertama
+                  Buat Kegiatan Pertama
                 </Button>
               </Box>
             </CardContent>
@@ -339,7 +339,7 @@ const Events = () => {
                         {event.title}
                       </Typography>
                       <Box>
-                        <Tooltip title="Edit Acara">
+                        <Tooltip title="Edit Kegiatan">
                           <IconButton
                             size="small"
                             onClick={() => handleOpenDialog(event)}
@@ -354,7 +354,7 @@ const Events = () => {
                             <Edit />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Hapus Acara">
+                        <Tooltip title="Hapus Kegiatan">
                           <IconButton
                             size="small"
                             color="error"
@@ -490,7 +490,7 @@ const Events = () => {
           </Box>
         )}
 
-        {/* Dialog Buat/Edit Acara */}
+        {/* Dialog Buat/Edit Kegiatan */}
         <Dialog
           open={openDialog}
           onClose={handleCloseDialog}
@@ -504,7 +504,7 @@ const Events = () => {
         >
           <DialogTitle sx={{ pb: 2 }}>
             <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
-              {selectedEvent ? 'Edit Acara' : 'Buat Acara Baru'}
+              {selectedEvent ? 'Edit Kegiatan' : 'Buat Kegiatan Baru'}
             </Typography>
           </DialogTitle>
           <form onSubmit={handleSubmit}>
@@ -513,7 +513,7 @@ const Events = () => {
                 <Grid item xs={12}>
                   <TextField
                     name="title"
-                    label="Judul Acara"
+                    label="Judul Kegiatan"
                     value={formData.title}
                     onChange={handleInputChange}
                     fullWidth

@@ -411,6 +411,7 @@ const Register = () => {
                       endAdornment: (
                         <InputAdornment position="end">
                           <IconButton
+                            type="button"
                             onClick={() => setShowPassword(v => !v)}
                             edge="end"
                             disabled={loading}
@@ -445,6 +446,7 @@ const Register = () => {
                       endAdornment: (
                         <InputAdornment position="end">
                           <IconButton
+                            type="button"
                             onClick={() => setShowConfirmPassword(v => !v)}
                             edge="end"
                             disabled={loading}
@@ -538,6 +540,7 @@ const Register = () => {
                           <Tooltip title="Ganti captcha" placement="top">
                             <span>
                               <IconButton
+                                type="button"
                                 onClick={generateMathCaptcha}
                                 disabled={loading}
                                 size="medium"

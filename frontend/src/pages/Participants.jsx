@@ -108,7 +108,7 @@ const Participants = () => {
       setEvent(response.data.event);
       setParticipantFields(response.data.event.participantFields || []);
     } catch (error) {
-      toast.error('Gagal mengambil detail acara');
+      toast.error('Gagal mengambil detail kegiatan');
       navigate('/events');
     }
   };
@@ -269,7 +269,7 @@ const Participants = () => {
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
-    saveAs(data, `template_peserta_${event?.title || 'acara'}.xlsx`);
+    saveAs(data, `template_peserta_${event?.title || 'kegiatan'}.xlsx`);
     toast.success('Template Excel berhasil diunduh');
   };
 
@@ -302,7 +302,7 @@ const Participants = () => {
       const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
-      const fileName = `peserta_${event?.title || 'acara'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileName = `peserta_${event?.title || 'kegiatan'}_${new Date().toISOString().split('T')[0]}.xlsx`;
       saveAs(data, fileName);
 
       toast.success('Data peserta berhasil diekspor ke Excel');
@@ -344,7 +344,7 @@ const Participants = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `sertifikat_${event?.title?.replace(/[^\w\s-]/g, '') || 'acara'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = `sertifikat_${event?.title?.replace(/[^\w\s-]/g, '') || 'kegiatan'}_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(link);
       link.click();
 

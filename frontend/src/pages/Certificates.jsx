@@ -588,7 +588,7 @@ const Certificates = () => {
         resultFields: Array.isArray(ev.publicDownloadResultFields) ? ev.publicDownloadResultFields : []
       }));
     } catch (error) {
-      toast.error('Gagal memuat detail acara');
+      toast.error('Gagal memuat detail kegiatan');
       navigate('/events');
     }
   };

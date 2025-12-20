@@ -46,7 +46,7 @@ const Layout = ({ children }) => {
 
   const menuItems = [
     { text: 'Dasbor', icon: <Dashboard />, path: '/dashboard' },
-    { text: 'Acara', icon: <Event />, path: '/events' },
+    { text: 'Kegiatan', icon: <Event />, path: '/events' },
   ];
 
   const handleDrawerToggle = () => {
