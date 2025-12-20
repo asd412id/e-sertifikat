@@ -76,7 +76,10 @@ class PuppeteerPDFService {
   async createPDF(template, participants) {
     let page = null;
     try {
+      const t0 = Date.now();
       await this.initialize();
+
+      const tInit = Date.now();
       page = await this.browser.newPage();
       await page.setCacheEnabled(true);
 
@@ -151,16 +154,25 @@ class PuppeteerPDFService {
       }
 
       // Prepare local fonts CSS (download Google Fonts to local server)
+      const tFontsStart = Date.now();
       const localFontsCSS = await this.prepareLocalFonts(template);
+      const tFontsEnd = Date.now();
+      console.log(`prepareLocalFonts took ${tFontsEnd - tFontsStart}ms`);
 
       // Create HTML content for all certificates
+      const tHtmlStart = Date.now();
       const htmlContent = this.generateHTMLFromTemplate(template, list, localFontsCSS);
+      const tHtmlEnd = Date.now();
+      console.log(`generateHTMLFromTemplate took ${tHtmlEnd - tHtmlStart}ms`);
 
       // Set content and wait for minimal readiness; fonts handled below
+      const tSetContentStart = Date.now();
       await page.setContent(htmlContent, {
         waitUntil: 'domcontentloaded',
         timeout: 45000
       });
+      const tSetContentEnd = Date.now();
+      console.log(`page.setContent took ${tSetContentEnd - tSetContentStart}ms`);
 
       // Set viewport to match template dimensions for better rendering
       await page.setViewport({
@@ -170,6 +182,7 @@ class PuppeteerPDFService {
       });
 
       // Explicitly load all fonts before proceeding
+      const tFontWaitStart = Date.now();
       await page.evaluate((families) => {
         const unique = Array.isArray(families) ? families.filter(Boolean) : [];
         // Proactively request these fonts to be loaded (best-effort)
@@ -204,6 +217,8 @@ class PuppeteerPDFService {
           setTimeout(check, 300);
         });
       }, fontsUsedList);
+      const tFontWaitEnd = Date.now();
+      console.log(`document.fonts wait took ${tFontWaitEnd - tFontWaitStart}ms`);
 
       // Force a reflow to ensure fonts are properly applied
       await page.evaluate(() => {
@@ -212,6 +227,7 @@ class PuppeteerPDFService {
 
       // Generate PDF with optimized settings for bulk
       console.log('Generating PDF...');
+      const tPdfStart = Date.now();
       const pdfBuffer = await page.pdf({
         width: `${template.width}px`,
         height: `${template.height}px`,
@@ -227,6 +243,11 @@ class PuppeteerPDFService {
         scale: 1.0, // Ensure 1:1 scale
         displayHeaderFooter: false
       });
+      const tPdfEnd = Date.now();
+      console.log(`page.pdf took ${tPdfEnd - tPdfStart}ms`);
+
+      const tEnd = Date.now();
+      console.log(`Total createPDF took ${tEnd - t0}ms (init+newPage: ${tInit - t0}ms)`);
 
       console.log(`PDF generated successfully for ${list.length} participant(s)`);
       return pdfBuffer;
@@ -315,8 +336,9 @@ class PuppeteerPDFService {
     const { googleFonts: builtFonts } = this._buildGoogleFontsQuery(template);
     googleFonts = [...builtFonts];
 
-    // Add Google Fonts import to HTML
-    if (googleFonts.length > 0) {
+    // Add Google Fonts import to HTML only when we don't have local font-face CSS.
+    // When localFontsCSS is present, including remote Google Fonts often slows rendering.
+    if (!localFontsCSS && googleFonts.length > 0) {
       const fontsQuery = googleFonts.join('&family=');
       googleFontsImport = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=${fontsQuery}&display=swap" rel="stylesheet">`;
     }
@@ -777,6 +799,7 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
     const urlRegex = /url\(([^)]+)\)\s*format\(['"]woff2['"]\)/g;
     let match;
     const replacements = [];
+    const downloadTasks = [];
 
     while ((match = urlRegex.exec(cssText)) !== null) {
       let fontUrl = match[1].replace(/['"]/g, '');
@@ -792,12 +815,34 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
 
         const localPath = path.join(targetDir, fileName);
         if (!fsSync.existsSync(localPath)) {
-          await this._downloadFile(fontUrl, localPath);
+          downloadTasks.push({ url: fontUrl, destPath: localPath });
         }
         const localUrl = `http://localhost:${process.env.PORT || 3000}/api/fonts/${familyDir}/${fileName}`;
         replacements.push({ remote: fontUrl, local: localUrl });
       } catch (e) {
       }
+    }
+
+    // Download missing font files with limited concurrency to reduce total wall time
+    if (downloadTasks.length) {
+      const CONCURRENCY = 4;
+      let i = 0;
+      const worker = async () => {
+        while (i < downloadTasks.length) {
+          const idx = i++;
+          const task = downloadTasks[idx];
+          if (!task) continue;
+          try {
+            if (!fsSync.existsSync(task.destPath)) {
+              await this._downloadFile(task.url, task.destPath);
+            }
+          } catch (_) {
+            // ignore individual font download errors
+          }
+        }
+      };
+      const workers = Array.from({ length: Math.min(CONCURRENCY, downloadTasks.length) }, () => worker());
+      await Promise.all(workers);
     }
 
     // Replace remote URLs with local URLs
