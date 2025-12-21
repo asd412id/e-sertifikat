@@ -4,12 +4,22 @@ const fs = require('fs').promises;
 const path = require('path');
 
 class CertificateService {
+  async getEventByUuid(eventUuid, userId) {
+    const event = await Event.findOne({
+      where: { uuid: eventUuid, userId, isActive: true }
+    });
+
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    return event;
+  }
+
   async createTemplate(templateData, userId) {
     try {
       // Verify event ownership
-      const event = await Event.findOne({
-        where: { id: templateData.eventId, userId, isActive: true }
-      });
+      const event = await this.getEventByUuid(templateData.eventId, userId);
 
       if (!event) {
         throw new Error('Event not found');
@@ -17,7 +27,7 @@ class CertificateService {
 
       const template = await CertificateTemplate.create({
         ...templateData,
-        eventId: templateData.eventId
+        eventId: event.id
       });
 
       return template;
@@ -29,9 +39,7 @@ class CertificateService {
   async getTemplatesByEvent(eventId, userId, page = 1, limit = 10) {
     try {
       // Verify event ownership
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
+      const event = await this.getEventByUuid(eventId, userId);
 
       if (!event) {
         throw new Error('Event not found');
@@ -40,7 +48,7 @@ class CertificateService {
       const offset = (page - 1) * limit;
 
       const { count, rows } = await CertificateTemplate.findAndCountAll({
-        where: { eventId, isActive: true },
+        where: { eventId: event.id, isActive: true },
         limit,
         offset,
         order: [['createdAt', 'DESC']]
@@ -60,7 +68,7 @@ class CertificateService {
   async getTemplateById(templateId, userId) {
     try {
       const template = await CertificateTemplate.findOne({
-        where: { id: templateId, isActive: true },
+        where: { uuid: templateId, isActive: true },
         include: [{
           model: Event,
           as: 'event',
@@ -97,7 +105,7 @@ class CertificateService {
   async updateTemplate(templateId, templateData, userId) {
     try {
       const template = await CertificateTemplate.findOne({
-        where: { id: templateId, isActive: true },
+        where: { uuid: templateId, isActive: true },
         include: [{
           model: Event,
           as: 'event',
@@ -109,10 +117,16 @@ class CertificateService {
         throw new Error('Template not found');
       }
 
+      // Prevent callers from overriding relational / immutable fields.
+      const updatePayload = { ...templateData };
+      delete updatePayload.eventId;
+      delete updatePayload.id;
+      delete updatePayload.uuid;
+
       // Check if we're updating the background image
-      if (templateData.design && templateData.design.background &&
+      if (updatePayload.design && updatePayload.design.background &&
         template.design && template.design.background &&
-        templateData.design.background !== template.design.background) {
+        updatePayload.design.background !== template.design.background) {
         // Delete old background image file if it exists and is different from the new one
         const oldBackgroundPath = template.design.background;
         if (oldBackgroundPath.startsWith('/uploads/')) {
@@ -127,7 +141,7 @@ class CertificateService {
         }
       }
 
-      await template.update(templateData);
+      await template.update(updatePayload);
       return template;
     } catch (error) {
       throw error;
@@ -137,7 +151,7 @@ class CertificateService {
   async deleteTemplate(templateId, userId) {
     try {
       const template = await CertificateTemplate.findOne({
-        where: { id: templateId, isActive: true },
+        where: { uuid: templateId, isActive: true },
         include: [{
           model: Event,
           as: 'event',

@@ -60,7 +60,7 @@ class EventController {
     try {
       const { id } = request.params;
 
-      const event = await EventService.getEventById(parseInt(id), request.user.userId);
+      const event = await EventService.getEventById(id, request.user.userId);
 
       reply.send({
         success: true,
@@ -85,7 +85,7 @@ class EventController {
         updateData.endDate = new Date(updateData.endDate);
       }
 
-      const event = await EventService.updateEvent(parseInt(id), updateData, request.user.userId);
+      const event = await EventService.updateEvent(id, updateData, request.user.userId);
 
       reply.send({
         success: true,
@@ -105,7 +105,7 @@ class EventController {
       const settings = request.body;
 
       const event = await EventService.updatePublicDownloadSettings(
-        parseInt(id),
+        id,
         settings,
         request.user.userId
       );
@@ -131,7 +131,7 @@ class EventController {
     try {
       const { id } = request.params;
 
-      const result = await EventService.deleteEvent(parseInt(id), request.user.userId);
+      const result = await EventService.deleteEvent(id, request.user.userId);
 
       reply.send({
         success: true,
@@ -154,7 +154,7 @@ class EventController {
     try {
       const { id } = request.params;
 
-      const fields = await EventService.getEventParticipantFields(parseInt(id), request.user.userId);
+      const fields = await EventService.getEventParticipantFields(id, request.user.userId);
 
       reply.send({
         success: true,

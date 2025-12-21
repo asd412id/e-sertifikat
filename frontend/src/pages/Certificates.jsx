@@ -582,7 +582,7 @@ const Certificates = () => {
           : (ev.publicDownloadIdentifierField
             ? [{ name: ev.publicDownloadIdentifierField, matchMode: ev.publicDownloadMatchMode || 'exact', required: true }]
             : []),
-        templateId: ev.publicDownloadTemplateId ? String(ev.publicDownloadTemplateId) : '',
+        templateId: '',
         regenerateSlug: false,
         slug: ev.publicDownloadSlug || '',
         resultFields: Array.isArray(ev.publicDownloadResultFields) ? ev.publicDownloadResultFields : []
@@ -622,7 +622,7 @@ const Certificates = () => {
         identifierField: publicDownloadSettings.identifierField,
         matchMode: publicDownloadSettings.matchMode,
         searchFields: publicDownloadSettings.searchFields,
-        templateId: publicDownloadSettings.templateId ? parseInt(publicDownloadSettings.templateId) : null,
+        templateId: publicDownloadSettings.templateId || null,
         regenerateSlug: publicDownloadSettings.regenerateSlug,
         slug: publicDownloadSettings.slug,
         resultFields: publicDownloadSettings.resultFields
@@ -743,7 +743,18 @@ const Certificates = () => {
     try {
       setLoading(true);
       const response = await certificateService.getTemplates(eventId, page, pagination.limit);
-      setTemplates(response.data.templates);
+      const nextTemplates = response.data.templates;
+      setTemplates(nextTemplates);
+
+      // Map stored FK (publicDownloadTemplateId) to template UUID for the dropdown
+      setPublicDownloadSettings((prev) => {
+        const fk = event?.publicDownloadTemplateId;
+        if (!fk) return prev;
+        const found = (nextTemplates || []).find((t) => t && t.id === fk);
+        if (!found?.uuid) return prev;
+        if (prev.templateId === found.uuid) return prev;
+        return { ...prev, templateId: found.uuid };
+      });
       setPagination({
         currentPage: response.data.currentPage,
         totalPages: response.data.totalPages,
@@ -1240,7 +1251,7 @@ const Certificates = () => {
 
       const templateData = {
         name: templateName,
-        eventId: parseInt(eventId),
+        eventId: eventId,
         design: {
           pages: savedPages,
           // keep legacy fields for backward compatibility
@@ -1263,7 +1274,7 @@ const Certificates = () => {
           }
         }
 
-        await certificateService.updateTemplate(selectedTemplate.id, templateData);
+        await certificateService.updateTemplate(selectedTemplate.uuid, templateData);
         toast.success('Template berhasil diperbarui');
       } else {
         await certificateService.createTemplate(templateData);
@@ -1801,7 +1812,7 @@ const Certificates = () => {
                       size="small"
                     >
                       {templates.map((t) => (
-                        <MenuItem key={t.id} value={String(t.id)}>{t.name}</MenuItem>
+                        <MenuItem key={t.uuid} value={String(t.uuid)}>{t.name}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -1888,7 +1899,7 @@ const Certificates = () => {
         ) : (
           <Grid container spacing={3}>
             {templates.map((template) => (
-              <Grid item xs={12} md={6} lg={4} key={template.id}>
+              <Grid item xs={12} md={6} lg={4} key={template.uuid}>
                 <Card
                   elevation={0}
                   sx={{
@@ -1978,7 +1989,7 @@ const Certificates = () => {
                         variant="contained"
                         size="medium"
                         startIcon={generating ? <CircularProgress size={16} /> : <GetApp />}
-                        onClick={() => handleDownloadAll(template.id)}
+                        onClick={() => handleDownloadAll(template.uuid)}
                         disabled={generating || participants.length === 0}
                         sx={{ flex: 1, minHeight: 40, borderRadius: 2, fontWeight: 700 }}
                       >
@@ -2024,7 +2035,7 @@ const Certificates = () => {
           }}
         >
           <MenuItem
-            onClick={() => handleDeleteTemplate(selectedTemplate?.id)}
+            onClick={() => handleDeleteTemplate(selectedTemplate?.uuid)}
             sx={{ py: 1.5, color: 'error.main' }}
           >
             <Delete sx={{ mr: 1.5 }} />

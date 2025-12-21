@@ -216,14 +216,9 @@ class CertificateController {
           })
           : null;
         return {
-          id: p.id,
+          uuid: p.uuid,
           name: displayName,
           identifierValue,
-          createdAt: p.createdAt,
-          data: {
-            nama: p?.data?.nama,
-            name: p?.data?.name
-          },
           displayFields
         };
       });
@@ -348,7 +343,7 @@ class CertificateController {
       });
 
       const participantWhere = {
-        id: parseInt(participantId),
+        uuid: participantId,
         eventId: event.id,
         [Op.and]: andConditions
       };
@@ -379,7 +374,7 @@ class CertificateController {
         .replace(/[^\w\s-]/g, '_')
         .replace(/\s+/g, '_')
         .substring(0, 50);
-      const pdfFileName = `sertifikat_${sanitizedName}_${participant.id}.pdf`;
+      const pdfFileName = `sertifikat_${sanitizedName}_${participant.uuid}.pdf`;
 
       reply.header('Content-Type', 'application/pdf');
       reply.header('Content-Disposition', `attachment; filename="${pdfFileName}"`);
@@ -542,7 +537,7 @@ class CertificateController {
       const { page = 1, limit = 10 } = request.query;
 
       const result = await CertificateService.getTemplatesByEvent(
-        parseInt(eventId),
+        eventId,
         request.user.userId,
         parseInt(page),
         parseInt(limit)
@@ -564,7 +559,7 @@ class CertificateController {
       const { id } = request.params;
 
       const template = await CertificateService.getTemplateById(
-        parseInt(id),
+        id,
         request.user.userId
       );
 
@@ -585,7 +580,7 @@ class CertificateController {
       const templateData = request.body;
 
       const template = await CertificateService.updateTemplate(
-        parseInt(id),
+        id,
         templateData,
         request.user.userId
       );
@@ -607,7 +602,7 @@ class CertificateController {
       const { id } = request.params;
 
       const result = await CertificateService.deleteTemplate(
-        parseInt(id),
+        id,
         request.user.userId
       );
 
@@ -626,11 +621,11 @@ class CertificateController {
     try {
       const { templateId, participantId } = request.params;
       // Fetch template (ownership validated inside service)
-      const template = await CertificateService.getTemplateById(parseInt(templateId), request.user.userId);
+      const template = await CertificateService.getTemplateById(templateId, request.user.userId);
 
       // Fetch participant directly (must belong to the same event)
       const participant = await Participant.findOne({
-        where: { id: parseInt(participantId), eventId: template.eventId }
+        where: { uuid: participantId, eventId: template.eventId }
       });
 
       if (!participant) {
@@ -724,7 +719,7 @@ class CertificateController {
       console.log(`Individual PDF download request for participant ${participantId} with template ${templateId}`);
 
       // Get template and verify ownership
-      const template = await CertificateService.getTemplateById(parseInt(templateId), request.user.userId);
+      const template = await CertificateService.getTemplateById(templateId, request.user.userId);
       if (!template) {
         console.log('Template not found');
         return reply.status(404).send({
@@ -735,7 +730,7 @@ class CertificateController {
       // Get the participant and verify they belong to the template's event
       const participant = await Participant.findOne({
         where: {
-          id: participantId,
+          uuid: participantId,
           eventId: template.eventId
         }
       });
@@ -787,7 +782,7 @@ class CertificateController {
 
       // Get event and verify ownership
       const event = await Event.findOne({
-        where: { id: eventId, userId: request.user.userId, isActive: true }
+        where: { uuid: eventId, userId: request.user.userId, isActive: true }
       });
 
       if (!event) {
@@ -798,7 +793,7 @@ class CertificateController {
       }
 
       // Get template and verify ownership
-      const template = await CertificateService.getTemplateById(parseInt(templateId), request.user.userId);
+      const template = await CertificateService.getTemplateById(templateId, request.user.userId);
       if (!template) {
         console.log('Template not found');
         return reply.status(404).send({
@@ -809,7 +804,7 @@ class CertificateController {
       // Get all participants for this event
       const participants = await Participant.findAll({
         where: {
-          eventId: eventId
+          eventId: event.id
         },
         order: [['id', 'ASC']]
       });

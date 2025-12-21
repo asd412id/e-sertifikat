@@ -5,22 +5,28 @@ const fs = require('fs').promises;
 const path = require('path');
 
 class ParticipantService {
+  async getEventByUuid(eventUuid, userId) {
+    const event = await Event.findOne({
+      where: { uuid: eventUuid, userId, isActive: true }
+    });
+
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    return event;
+  }
+
   async addParticipant(eventId, participantData, userId) {
     try {
       // Verify event ownership
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
-
-      if (!event) {
-        throw new Error('Event not found');
-      }
+      const event = await this.getEventByUuid(eventId, userId);
 
       // Validate participant data against event fields
       this.validateParticipantData(participantData, event.participantFields);
 
       const participant = await Participant.create({
-        eventId,
+        eventId: event.id,
         data: participantData
       });
 
@@ -33,18 +39,12 @@ class ParticipantService {
   async getParticipantsByEvent(eventId, userId, page = 1, limit = 10, search = '') {
     try {
       // Verify event ownership
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
-
-      if (!event) {
-        throw new Error('Event not found');
-      }
+      const event = await this.getEventByUuid(eventId, userId);
 
       const offset = (page - 1) * limit;
 
       // Build search condition
-      let whereCondition = { eventId };
+      let whereCondition = { eventId: event.id };
       if (search) {
         // Create search conditions for all participant fields
         const searchConditions = [];
@@ -57,7 +57,7 @@ class ParticipantService {
         }
 
         whereCondition = {
-          eventId,
+          eventId: event.id,
           [Op.or]: searchConditions
         };
       }
@@ -73,7 +73,8 @@ class ParticipantService {
         participants: rows,
         totalCount: count,
         totalPages: Math.ceil(count / limit),
-        currentPage: page
+        currentPage: page,
+        limit
       };
     } catch (error) {
       throw error;
@@ -83,7 +84,7 @@ class ParticipantService {
   async updateParticipant(participantId, participantData, userId) {
     try {
       const participant = await Participant.findOne({
-        where: { id: participantId },
+        where: { uuid: participantId },
         include: [{
           model: Event,
           as: 'event',
@@ -108,7 +109,7 @@ class ParticipantService {
   async deleteParticipant(participantId, userId) {
     try {
       const participant = await Participant.findOne({
-        where: { id: participantId },
+        where: { uuid: participantId },
         include: [{
           model: Event,
           as: 'event',
@@ -145,13 +146,7 @@ class ParticipantService {
   async importFromExcel(eventId, filePath, userId) {
     try {
       // Verify event ownership
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
-
-      if (!event) {
-        throw new Error('Event not found');
-      }
+      const event = await this.getEventByUuid(eventId, userId);
 
       // Read Excel file
       const workbook = xlsx.readFile(filePath);
@@ -193,7 +188,7 @@ class ParticipantService {
           this.validateParticipantData(transformedData, event.participantFields);
 
           await Participant.create({
-            eventId,
+            eventId: event.id,
             data: transformedData
           });
 
@@ -227,7 +222,7 @@ class ParticipantService {
   async getParticipantById(participantId, userId) {
     try {
       const participant = await Participant.findOne({
-        where: { id: participantId },
+        where: { uuid: participantId },
         include: [{
           model: Event,
           as: 'event',

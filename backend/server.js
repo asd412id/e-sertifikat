@@ -59,7 +59,7 @@ async function start() {
 
     // Sync database (create tables if they don't exist)
     if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ force: false });
+      await sequelize.sync({ force: false, alter: true });
       console.log('Database synchronized.');
     } else {
       await sequelize.sync();

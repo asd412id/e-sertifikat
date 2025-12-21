@@ -144,11 +144,11 @@ const DownloadCertificate = () => {
 
   const handleDownloadParticipant = async (participant) => {
     try {
-      setDownloadingId(participant?.id);
+      setDownloadingId(participant?.uuid);
       setError('');
 
       const response = await api.post(
-        `/certificates/public/${slug}/participants/${participant.id}/download-pdf`,
+        `/certificates/public/${slug}/participants/${participant.uuid}/download-pdf`,
         {
           identifier: identifier.trim(),
           criteria
@@ -165,10 +165,10 @@ const DownloadCertificate = () => {
       }
 
       const safeName = String(participant?.name || 'participant')
-        .replace(/[^\w\s-]/g, '_')
+        .replace(/[^-\w\s-]/g, '_')
         .replace(/\s+/g, '_')
         .substring(0, 50);
-      const fileName = `sertifikat_${safeName}_${participant.id}.pdf`;
+      const fileName = `sertifikat_${safeName}_${participant.uuid}.pdf`;
       downloadBlobAsFile(blob, fileName);
       toast.success('Sertifikat berhasil diunduh');
     } catch (e) {
@@ -345,7 +345,7 @@ const DownloadCertificate = () => {
                               <Stack spacing={1.25}>
                                 {(searchResults.results || []).map((r) => (
                                   <Paper
-                                    key={r.id}
+                                    key={r.uuid}
                                     variant="outlined"
                                     sx={{
                                       borderRadius: 2,
@@ -383,7 +383,7 @@ const DownloadCertificate = () => {
                                       size="small"
                                       onClick={() => handleDownloadParticipant(r)}
                                       disabled={!!downloadingId || searching}
-                                      startIcon={downloadingId === r.id ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
+                                      startIcon={downloadingId === r.uuid ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
                                       sx={{
                                         borderRadius: 2,
                                         fontWeight: 800,
@@ -392,7 +392,7 @@ const DownloadCertificate = () => {
                                         alignSelf: { xs: 'stretch', sm: 'center' },
                                       }}
                                     >
-                                      {downloadingId === r.id ? 'Mengunduh...' : 'Download'}
+                                      {downloadingId === r.uuid ? 'Mengunduh...' : 'Download'}
                                     </Button>
                                   </Paper>
                                 ))}

@@ -9,7 +9,7 @@ class ParticipantController {
       const participantData = request.body;
 
       const participant = await ParticipantService.addParticipant(
-        parseInt(eventId),
+        eventId,
         participantData,
         request.user.userId
       );
@@ -32,7 +32,7 @@ class ParticipantController {
       const { page = 1, limit = 10, search = '' } = request.query;
 
       const result = await ParticipantService.getParticipantsByEvent(
-        parseInt(eventId),
+        eventId,
         request.user.userId,
         parseInt(page),
         parseInt(limit),
@@ -55,7 +55,7 @@ class ParticipantController {
       const { id } = request.params;
 
       const participant = await ParticipantService.getParticipantById(
-        parseInt(id),
+        id,
         request.user.userId
       );
 
@@ -76,7 +76,7 @@ class ParticipantController {
       const participantData = request.body;
 
       const participant = await ParticipantService.updateParticipant(
-        parseInt(id),
+        id,
         participantData,
         request.user.userId
       );
@@ -98,7 +98,7 @@ class ParticipantController {
       const { id } = request.params;
 
       const result = await ParticipantService.deleteParticipant(
-        parseInt(id),
+        id,
         request.user.userId
       );
 
@@ -119,7 +119,7 @@ class ParticipantController {
 
       // Get all participants for this event
       const result = await ParticipantService.getParticipantsByEvent(
-        parseInt(eventId),
+        eventId,
         request.user.userId,
         1,
         10000 // Get all participants
@@ -128,13 +128,13 @@ class ParticipantController {
       // Get event details for field information
       const eventService = require('../services/EventService');
       const eventResult = await eventService.getEventById(
-        parseInt(eventId),
+        eventId,
         request.user.userId
       );
 
       // Get participant fields
       const fields = await eventService.getEventParticipantFields(
-        parseInt(eventId),
+        eventId,
         request.user.userId
       ) || [];
 
@@ -193,7 +193,7 @@ class ParticipantController {
 
       // Import participants
       const result = await ParticipantService.importFromExcel(
-        parseInt(eventId),
+        eventId,
         tempFilePath,
         request.user.userId
       );

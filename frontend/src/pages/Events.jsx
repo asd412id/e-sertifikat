@@ -148,7 +148,7 @@ const Events = () => {
     e.preventDefault();
     try {
       if (selectedEvent) {
-        await eventService.updateEvent(selectedEvent.id, formData);
+        await eventService.updateEvent(selectedEvent.uuid, formData);
         toast.success('Kegiatan berhasil diperbarui');
       } else {
         await eventService.createEvent(formData);
@@ -319,7 +319,7 @@ const Events = () => {
         ) : (
           <Grid container spacing={3}>
             {events.map((event) => (
-              <Grid item xs={12} md={6} lg={4} key={event.id}>
+              <Grid item xs={12} md={6} lg={4} key={event.uuid}>
                 <Card
                   elevation={0}
                   sx={{
@@ -358,7 +358,7 @@ const Events = () => {
                           <IconButton
                             size="small"
                             color="error"
-                            onClick={() => handleDelete(event.id)}
+                            onClick={() => handleDelete(event.uuid)}
                             sx={{
                               ml: 0.75,
                               border: '1px solid',
@@ -439,7 +439,7 @@ const Events = () => {
                         variant="outlined"
                         size="medium"
                         startIcon={<People />}
-                        onClick={() => navigate(`/participants/${event.id}`)}
+                        onClick={() => navigate(`/participants/${event.uuid}`)}
                         sx={{
                           flex: 1,
                           minHeight: 40,
@@ -455,7 +455,7 @@ const Events = () => {
                         variant="contained"
                         size="medium"
                         startIcon={<Settings />}
-                        onClick={() => navigate(`/events/${event.id}/certificates`)}
+                        onClick={() => navigate(`/events/${event.uuid}/certificates`)}
                         sx={{
                           flex: 1,
                           minHeight: 40,

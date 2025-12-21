@@ -7,6 +7,12 @@ const Participant = sequelize.define('Participant', {
     primaryKey: true,
     autoIncrement: true
   },
+  uuid: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    allowNull: false,
+    unique: true
+  },
   data: {
     type: DataTypes.JSON,
     allowNull: false,

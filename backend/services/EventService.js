@@ -4,6 +4,18 @@ const path = require('path');
 const crypto = require('crypto');
 
 class EventService {
+  async getEventByUuid(eventUuid, userId) {
+    const event = await Event.findOne({
+      where: { uuid: eventUuid, userId, isActive: true }
+    });
+
+    if (!event) {
+      throw new Error('Event not found');
+    }
+
+    return event;
+  }
+
   async createEvent(eventData, userId) {
     try {
       const event = await Event.create({
@@ -58,13 +70,7 @@ class EventService {
 
   async updateEvent(eventId, eventData, userId) {
     try {
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
-
-      if (!event) {
-        throw new Error('Event not found');
-      }
+      const event = await this.getEventByUuid(eventId, userId);
 
       const updateData = { ...eventData };
 
@@ -169,13 +175,7 @@ class EventService {
 
   async updatePublicDownloadSettings(eventId, settings, userId) {
     try {
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
-
-      if (!event) {
-        throw new Error('Event not found');
-      }
+      const event = await this.getEventByUuid(eventId, userId);
 
       const {
         enabled,
@@ -236,17 +236,20 @@ class EventService {
           }
         }
 
-        if (!templateId || Number.isNaN(parseInt(templateId))) {
+        if (templateId == null || String(templateId).trim().length === 0) {
           throw new Error('templateId is required');
         }
 
         const template = await CertificateTemplate.findOne({
-          where: { id: parseInt(templateId), eventId: event.id, isActive: true }
+          where: { uuid: String(templateId), eventId: event.id, isActive: true }
         });
 
         if (!template) {
           throw new Error('Template not found');
         }
+
+        // Normalize the stored FK to internal integer id
+        settings.templateId = template.id;
       }
 
       let slug = event.publicDownloadSlug;
@@ -297,7 +300,7 @@ class EventService {
         publicDownloadSearchFields: enabled
           ? (normalizedSearchFields || null)
           : null,
-        publicDownloadTemplateId: enabled ? parseInt(templateId) : null,
+        publicDownloadTemplateId: enabled ? parseInt(settings.templateId) : null,
         publicDownloadSlug: enabled ? slug : event.publicDownloadSlug,
         publicDownloadResultFields: enabled
           ? (Array.isArray(resultFields) ? resultFields : null)
@@ -313,7 +316,7 @@ class EventService {
   async deleteEvent(eventId, userId) {
     try {
       const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true },
+        where: { uuid: eventId, userId, isActive: true },
         include: [
           {
             model: CertificateTemplate,
@@ -381,7 +384,7 @@ class EventService {
   async getEventParticipantFields(eventId, userId) {
     try {
       const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true },
+        where: { uuid: eventId, userId, isActive: true },
         attributes: ['participantFields']
       });
 
@@ -397,15 +400,7 @@ class EventService {
 
   async getEventById(eventId, userId) {
     try {
-      const event = await Event.findOne({
-        where: { id: eventId, userId, isActive: true }
-      });
-
-      if (!event) {
-        throw new Error('Event not found');
-      }
-
-      return event;
+      return await this.getEventByUuid(eventId, userId);
     } catch (error) {
       throw error;
     }

@@ -10,6 +10,34 @@ class PuppeteerPDFService {
   constructor() {
     this.browser = null;
     this.initializationPromise = null; // To prevent multiple browser initializations
+    this._activeJobs = 0;
+    this._jobQueue = [];
+    this._fontsCssInFlight = new Map();
+  }
+
+  _getConcurrencyLimit() {
+    const v = parseInt(process.env.PUPPETEER_PDF_CONCURRENCY || process.env.CERTIFICATE_CONCURRENCY_LIMIT, 10);
+    if (Number.isFinite(v) && v > 0) return Math.min(v, 16);
+    return 2;
+  }
+
+  async _acquireJobSlot() {
+    const limit = this._getConcurrencyLimit();
+    if (this._activeJobs < limit) {
+      this._activeJobs++;
+      return;
+    }
+
+    await new Promise((resolve) => {
+      this._jobQueue.push(resolve);
+    });
+    this._activeJobs++;
+  }
+
+  _releaseJobSlot() {
+    this._activeJobs = Math.max(0, (this._activeJobs || 0) - 1);
+    const next = this._jobQueue.shift();
+    if (next) next();
   }
 
   /**
@@ -32,8 +60,13 @@ class PuppeteerPDFService {
     }
 
     // Start initialization and store the promise
+    const userDataDir = process.env.PUPPETEER_USER_DATA_DIR
+      ? path.resolve(process.env.PUPPETEER_USER_DATA_DIR)
+      : path.join(__dirname, '..', '.puppeteer_profile');
+
     this.initializationPromise = puppeteer.launch({
       headless: true,
+      userDataDir,
       args: [
         '--no-sandbox',
         '--disable-web-security',
@@ -44,6 +77,8 @@ class PuppeteerPDFService {
         '--font-render-hinting=none',
         '--memory-pressure-off', // Improve performance for bulk operations
         '--max_old_space_size=8192', // Increase memory limit
+        `--disk-cache-dir=${path.join(userDataDir, 'Cache')}`,
+        '--disk-cache-size=268435456',
         '--disable-background-networking',
         '--disable-background-timer-throttling',
         '--disable-renderer-backgrounding',
@@ -76,6 +111,7 @@ class PuppeteerPDFService {
   async createPDF(template, participants) {
     let page = null;
     try {
+      await this._acquireJobSlot();
       const t0 = Date.now();
       await this.initialize();
 
@@ -96,11 +132,23 @@ class PuppeteerPDFService {
 
         // Handle local upload files (support both legacy /uploads and current /api/uploads)
         const port = process.env.PORT || 3000;
-        if (url.startsWith(`http://localhost:${port}/uploads/`) || url.startsWith(`http://localhost:${port}/api/uploads/`)) {
-          const fileName = url.startsWith(`http://localhost:${port}/api/uploads/`)
-            ? url.replace(`http://localhost:${port}/api/uploads/`, '')
-            : url.replace(`http://localhost:${port}/uploads/`, '');
-          const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
+        const uploadsPrefix = `http://localhost:${port}/api/uploads/`;
+        const uploadsLegacyPrefix = `http://localhost:${port}/uploads/`;
+        const fontsPrefix = `http://localhost:${port}/api/fonts/`;
+
+        if (url.startsWith(uploadsPrefix) || url.startsWith(uploadsLegacyPrefix) || url.startsWith(fontsPrefix)) {
+          const isFonts = url.startsWith(fontsPrefix);
+          const relPath = url.startsWith(fontsPrefix)
+            ? url.replace(fontsPrefix, '')
+            : url.startsWith(uploadsPrefix)
+              ? url.replace(uploadsPrefix, '')
+              : url.replace(uploadsLegacyPrefix, '');
+
+          const baseDir = isFonts
+            ? path.join(__dirname, '..', 'fonts')
+            : path.resolve(process.env.UPLOAD_DIR || './uploads');
+
+          const filePath = path.join(baseDir, relPath);
 
           try {
             // Check if file exists
@@ -113,6 +161,12 @@ class PuppeteerPDFService {
                 contentType = 'image/png';
               } else if (extension === '.jpg' || extension === '.jpeg') {
                 contentType = 'image/jpeg';
+              } else if (extension === '.woff2') {
+                contentType = 'font/woff2';
+              } else if (extension === '.woff') {
+                contentType = 'font/woff';
+              } else if (extension === '.ttf') {
+                contentType = 'font/ttf';
               }
 
               request.respond({
@@ -263,6 +317,8 @@ class PuppeteerPDFService {
           console.error('Error closing page:', error);
         }
       }
+
+      this._releaseJobSlot();
     }
   }
 
@@ -770,6 +826,16 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
     const fontsRoot = path.join(__dirname, '..', 'fonts');
     const cacheCssPath = path.join(fontsRoot, `cache_${hash}.css`);
 
+    // If another request is already preparing the exact same font set, await it.
+    // This prevents duplicated downloads / writes when concurrent PDF generation happens.
+    try {
+      if (this._fontsCssInFlight && this._fontsCssInFlight.has(hash)) {
+        return await this._fontsCssInFlight.get(hash);
+      }
+    } catch (_) { /* ignore */ }
+
+    const inFlight = (async () => {
+
     try {
       // If cached CSS exists, return it immediately (fast path)
       if (fsSync.existsSync(cacheCssPath)) {
@@ -871,6 +937,19 @@ PuppeteerPDFService.prototype.prepareLocalFonts = async function (template) {
     } catch (_) { /* ignore write errors */ }
 
     return localCss;
+    })();
+
+    if (this._fontsCssInFlight) {
+      this._fontsCssInFlight.set(hash, inFlight);
+    }
+
+    try {
+      return await inFlight;
+    } finally {
+      try {
+        if (this._fontsCssInFlight) this._fontsCssInFlight.delete(hash);
+      } catch (_) { /* ignore */ }
+    }
   } catch (e) {
     return '';
   }

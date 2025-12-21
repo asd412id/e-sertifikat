@@ -175,7 +175,7 @@ const Participants = () => {
     e.preventDefault();
     try {
       if (selectedParticipant) {
-        await participantService.updateParticipant(selectedParticipant.id, formData);
+        await participantService.updateParticipant(selectedParticipant.uuid, formData);
         toast.success('Data peserta berhasil diperbarui');
       } else {
         await participantService.addParticipant(eventId, formData);
@@ -333,7 +333,7 @@ const Participants = () => {
       setBulkPdfDownloading(true);
 
       // Call the service to get the PDF blob
-      const blob = await certificateService.bulkDownloadCertificatesPDF(eventId, selectedTemplate.id);
+      const blob = await certificateService.bulkDownloadCertificatesPDF(eventId, selectedTemplate.uuid);
 
       // Validate that we received a valid blob
       if (!blob || blob.size === 0) {
@@ -382,7 +382,7 @@ const Participants = () => {
       setDownloading(participantId);
 
       // Call the service to generate and download individual certificate
-      const blob = await certificateService.generateAndDownloadCertificate(selectedTemplate.id, participantId);
+      const blob = await certificateService.generateAndDownloadCertificate(selectedTemplate.uuid, participantId);
 
       // Validate that we received a valid blob
       if (!blob || blob.size === 0) {
@@ -571,7 +571,7 @@ const Participants = () => {
                     </TableHead>
                     <TableBody>
                       {participants.map((participant, index) => (
-                        <TableRow key={participant.id}>
+                        <TableRow key={participant.uuid}>
                           <TableCell>{index + 1 + (pagination.currentPage - 1) * pagination.limit}</TableCell>
                           {participantFields.map((field) => (
                             <TableCell key={field.name}>
@@ -579,16 +579,16 @@ const Participants = () => {
                             </TableCell>
                           ))}
                           <TableCell>
-                            <Tooltip title={downloading === participant.id ? "Mengunduh..." : "Unduh Sertifikat (Generate On-Demand)"}>
+                            <Tooltip title={downloading === participant.uuid ? "Mengunduh..." : "Unduh Sertifikat (Generate On-Demand)"}>
                               <IconButton
                                 size="small"
                                 onClick={() => openIndividualDownloadDialog(
-                                  participant.id,
-                                  participant.data?.nama || participant.data?.name || `Peserta ${participant.id}`
+                                  participant.uuid,
+                                  participant.data?.nama || participant.data?.name || `Peserta ${participant.uuid}`
                                 )}
-                                disabled={downloading === participant.id}
+                                disabled={downloading === participant.uuid}
                               >
-                                {downloading === participant.id ? <CircularProgress size={16} /> : <Download />}
+                                {downloading === participant.uuid ? <CircularProgress size={16} /> : <Download />}
                               </IconButton>
                             </Tooltip>
                           </TableCell>
@@ -605,7 +605,7 @@ const Participants = () => {
                               <IconButton
                                 size="small"
                                 color="error"
-                                onClick={() => handleDelete(participant.id)}
+                                onClick={() => handleDelete(participant.uuid)}
                               >
                                 <Delete />
                               </IconButton>
@@ -751,15 +751,15 @@ const Participants = () => {
               <FormControl fullWidth sx={{ mt: 2 }}>
                 <InputLabel>Template Sertifikat</InputLabel>
                 <Select
-                  value={selectedTemplate?.id || ''}
+                  value={selectedTemplate?.uuid || ''}
                   onChange={(e) => {
-                    const template = templates.find(t => t.id === e.target.value);
+                    const template = templates.find(t => t.uuid === e.target.value);
                     setSelectedTemplate(template);
                   }}
                   label="Template Sertifikat"
                 >
                   {templates.map((template) => (
-                    <MenuItem key={template.id} value={template.id}>
+                    <MenuItem key={template.uuid} value={template.uuid}>
                       {template.name}
                     </MenuItem>
                   ))}

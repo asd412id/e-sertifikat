@@ -26,6 +26,7 @@ Thumbs.db
 
 # IDE
 .vscode/
+.windsurf
 .idea/
 *.swp
 *.swo
@@ -69,6 +70,7 @@ jspm_packages/
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
+.puppeteer_profile
 
 # next.js build output
 .next
