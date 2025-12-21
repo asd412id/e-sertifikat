@@ -29,7 +29,8 @@ import {
   Tooltip,
   Fab,
   Menu,
-  Pagination
+  Pagination,
+  Stack
 } from '@mui/material';
 import {
   Add,
@@ -436,60 +437,88 @@ const Participants = () => {
   return (
     <Layout>
       <Box>
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          flexWrap="wrap"
-          rowGap={1}
-          columnGap={1}
-          mb={3}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            mb: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
+          }}
         >
-          <Box display="flex" alignItems="flex-start" sx={{ flex: '1 1 auto', minWidth: 0 }}>
-            <IconButton onClick={() => navigate('/events')} sx={{ mr: 1 }}>
-              <ArrowBack />
-            </IconButton>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h4" component="h1">
-                Peserta
-              </Typography>
-              <Typography
-                variant="subtitle1"
-                color="text.secondary"
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            spacing={2}
+          >
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+              <IconButton
+                onClick={() => navigate('/events')}
                 sx={{
-                  display: '-webkit-box',
-                  WebkitBoxOrient: 'vertical',
-                  WebkitLineClamp: 2,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  wordBreak: 'break-word',
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2,
+                  background: 'rgba(102, 126, 234, 0.14)',
+                  border: '1px solid rgba(102, 126, 234, 0.22)',
+                  color: 'primary.main',
+                  '&:hover': {
+                    background: 'rgba(102, 126, 234, 0.18)',
+                  }
                 }}
               >
-                {event?.title}
-              </Typography>
-            </Box>
-          </Box>
-          <Box display="flex" gap={1} sx={{ flex: '0 0 auto', alignSelf: 'flex-start' }}>
-            <Button
-              variant="outlined"
-              startIcon={<MoreVert />}
-              onClick={(e) => setAnchorEl(e.currentTarget)}
-              size="small"
-              sx={{ whiteSpace: 'nowrap' }}
+                <ArrowBack />
+              </IconButton>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography variant="h4" component="h1" sx={{ fontWeight: 800, mb: 0.25 }}>
+                  Peserta
+                </Typography>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: { xs: 2, sm: 1 },
+                    WebkitBoxOrient: 'vertical',
+                    lineHeight: 1.25
+                  }}
+                >
+                  {event?.title}
+                </Typography>
+              </Box>
+            </Stack>
+
+            <Stack
+              direction="row"
+              spacing={1}
+              justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}
+              sx={{ flexShrink: 0, flexWrap: 'wrap' }}
             >
-              Aksi
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => handleOpenDialog()}
-              size="small"
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              Tambah Peserta
-            </Button>
-          </Box>
-        </Box>
+              <Button
+                variant="outlined"
+                startIcon={<MoreVert />}
+                onClick={(e) => setAnchorEl(e.currentTarget)}
+                sx={{ borderRadius: 2, whiteSpace: 'nowrap' }}
+              >
+                Aksi
+              </Button>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<Add />}
+                onClick={() => handleOpenDialog()}
+                sx={{ px: 3, py: 1.25, borderRadius: 2, fontWeight: 700, whiteSpace: 'nowrap' }}
+              >
+                Tambah Peserta
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
 
         {/* Actions Menu */}
         <Menu
