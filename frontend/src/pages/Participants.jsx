@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -58,6 +58,7 @@ const Participants = () => {
   const [participants, setParticipants] = useState([]);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const didInitSearchEffect = useRef(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -91,6 +92,11 @@ const Participants = () => {
 
   // Debounce search term
   useEffect(() => {
+    if (!didInitSearchEffect.current) {
+      didInitSearchEffect.current = true;
+      return;
+    }
+
     const handler = setTimeout(() => {
       if (searchTerm !== undefined) {
         fetchParticipants(1, searchTerm);
@@ -430,25 +436,46 @@ const Participants = () => {
   return (
     <Layout>
       <Box>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Box display="flex" alignItems="center">
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="flex-start"
+          flexWrap="wrap"
+          rowGap={1}
+          columnGap={1}
+          mb={3}
+        >
+          <Box display="flex" alignItems="flex-start" sx={{ flex: '1 1 auto', minWidth: 0 }}>
             <IconButton onClick={() => navigate('/events')} sx={{ mr: 1 }}>
               <ArrowBack />
             </IconButton>
-            <Box>
+            <Box sx={{ minWidth: 0 }}>
               <Typography variant="h4" component="h1">
                 Peserta
               </Typography>
-              <Typography variant="subtitle1" color="text.secondary">
+              <Typography
+                variant="subtitle1"
+                color="text.secondary"
+                sx={{
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: 2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  wordBreak: 'break-word',
+                }}
+              >
                 {event?.title}
               </Typography>
             </Box>
           </Box>
-          <Box display="flex" gap={1}>
+          <Box display="flex" gap={1} sx={{ flex: '0 0 auto', alignSelf: 'flex-start' }}>
             <Button
               variant="outlined"
               startIcon={<MoreVert />}
               onClick={(e) => setAnchorEl(e.currentTarget)}
+              size="small"
+              sx={{ whiteSpace: 'nowrap' }}
             >
               Aksi
             </Button>
@@ -456,6 +483,8 @@ const Participants = () => {
               variant="contained"
               startIcon={<Add />}
               onClick={() => handleOpenDialog()}
+              size="small"
+              sx={{ whiteSpace: 'nowrap' }}
             >
               Tambah Peserta
             </Button>
