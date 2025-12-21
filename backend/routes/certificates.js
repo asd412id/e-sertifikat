@@ -32,6 +32,25 @@ async function certificateRoutes(fastify, options) {
     CertificateController.downloadIndividualCertificatePDF
   );
 
+  // Async job-based endpoints for high concurrent generation (auth)
+  fastify.post(
+    '/templates/:templateId/participants/:participantId/enqueue-pdf',
+    { preHandler: authenticateToken },
+    CertificateController.enqueueIndividualCertificatePDFJob
+  );
+
+  fastify.get(
+    '/jobs/:jobId',
+    { preHandler: authenticateToken },
+    CertificateController.getCertificateJobStatus
+  );
+
+  fastify.get(
+    '/jobs/:jobId/download',
+    { preHandler: authenticateToken },
+    CertificateController.downloadCertificateJobResult
+  );
+
   // File upload (auth)
   fastify.post('/upload-background', { preHandler: authenticateToken }, CertificateController.uploadBackgroundImage);
 

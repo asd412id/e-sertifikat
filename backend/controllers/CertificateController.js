@@ -2,6 +2,7 @@ const CertificateService = require('../services/CertificateService');
 const { Event, Participant } = require('../models');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const archiver = require('archiver');
 const { Op, where, literal } = require('sequelize');
 
@@ -842,6 +843,107 @@ class CertificateController {
           error: error.message
         });
       }
+    }
+  }
+
+  async enqueueIndividualCertificatePDFJob(request, reply) {
+    try {
+      const { templateId, participantId } = request.params;
+      const CertificateJobService = require('../services/CertificateJobService');
+
+      const job = await CertificateJobService.enqueueIndividualPdfJob({
+        templateUuid: templateId,
+        participantUuid: participantId,
+        userId: request.user.userId
+      });
+
+      reply.code(202).send({
+        success: true,
+        data: {
+          jobId: job.id,
+          status: job.status,
+          statusUrl: `/api/certificates/jobs/${job.id}`,
+          downloadUrl: `/api/certificates/jobs/${job.id}/download`
+        }
+      });
+    } catch (error) {
+      reply.status(400).send({
+        error: error.message
+      });
+    }
+  }
+
+  async getCertificateJobStatus(request, reply) {
+    try {
+      const { jobId } = request.params;
+      const CertificateJobService = require('../services/CertificateJobService');
+      const job = CertificateJobService.getJob(jobId);
+
+      if (!job) {
+        return reply.status(404).send({ error: 'Job not found' });
+      }
+
+      // Only allow owner to access
+      if (job.userId !== request.user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      reply.send({
+        success: true,
+        data: {
+          jobId: job.id,
+          status: job.status,
+          error: job.error,
+          fileName: job.fileName,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+          downloadUrl: job.status === 'done' ? `/api/certificates/jobs/${job.id}/download` : null
+        }
+      });
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
+    }
+  }
+
+  async downloadCertificateJobResult(request, reply) {
+    try {
+      const { jobId } = request.params;
+      const CertificateJobService = require('../services/CertificateJobService');
+      const job = CertificateJobService.getJob(jobId);
+
+      if (!job) {
+        return reply.status(404).send({ error: 'Job not found' });
+      }
+
+      if (job.userId !== request.user.userId) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      if (job.status === 'failed') {
+        return reply.status(409).send({ error: job.error || 'Job failed' });
+      }
+
+      if (job.status !== 'done' || !job.filePath) {
+        return reply.status(409).send({ error: 'Job is not completed yet' });
+      }
+
+      if (!fsSync.existsSync(job.filePath)) {
+        return reply.status(410).send({ error: 'File expired or missing' });
+      }
+
+      const pdfBuffer = await fs.readFile(job.filePath);
+      const fileName = job.fileName || `certificate_${job.id}.pdf`;
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      reply.header('Content-Length', pdfBuffer.length);
+      reply.send(pdfBuffer);
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
     }
   }
 

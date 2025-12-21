@@ -1524,7 +1524,7 @@ const Certificates = () => {
           }}
         >
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
-            <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
               <IconButton
                 onClick={() => navigate('/events')}
                 sx={{
@@ -1541,11 +1541,23 @@ const Certificates = () => {
               >
                 <ArrowBack />
               </IconButton>
-              <Box>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography variant="h4" component="h1" sx={{ fontWeight: 800, mb: 0.25 }}>
                   Template Sertifikat
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: { xs: 2, sm: 1 },
+                    WebkitBoxOrient: 'vertical',
+                    lineHeight: 1.25
+                  }}
+                >
                   {event?.title}
                 </Typography>
               </Box>
@@ -1555,7 +1567,7 @@ const Certificates = () => {
               size="large"
               startIcon={<Add />}
               onClick={() => handleOpenEditor()}
-              sx={{ px: 3, py: 1.25, borderRadius: 2, fontWeight: 700 }}
+              sx={{ px: 3, py: 1.25, borderRadius: 2, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}
             >
               Buat Template
             </Button>
