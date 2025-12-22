@@ -29,7 +29,7 @@ class EventService {
     }
   }
 
-  async getEventsByUser(userId, page = 1, limit = 10, search = '') {
+  async getEventsByUser(userId, page = 1, limit = 10, search = '', includeStats = false) {
     try {
       const offset = (page - 1) * limit;
 
@@ -67,6 +67,37 @@ class EventService {
         distinct: true
       });
 
+      let stats = null;
+      if (includeStats) {
+        const baseWhere = { userId, isActive: true };
+        const [totalEvents, totalParticipants, totalTemplates] = await Promise.all([
+          Event.count({ where: baseWhere }),
+          Participant.count({
+            include: [{
+              model: Event,
+              as: 'event',
+              where: baseWhere,
+              attributes: []
+            }]
+          }),
+          CertificateTemplate.count({
+            where: { isActive: true },
+            include: [{
+              model: Event,
+              as: 'event',
+              where: baseWhere,
+              attributes: []
+            }]
+          })
+        ]);
+
+        stats = {
+          totalEvents,
+          totalParticipants,
+          totalTemplates
+        };
+      }
+
       return {
         events: rows.map(event => ({
           ...event.toJSON(),
@@ -76,7 +107,8 @@ class EventService {
         totalCount: count,
         totalPages: Math.ceil(count / limit),
         currentPage: page,
-        limit
+        limit,
+        stats
       };
     } catch (error) {
       throw error;

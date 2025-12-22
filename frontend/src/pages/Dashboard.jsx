@@ -87,15 +87,22 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const eventsResponse = await api.get('/events?limit=6');
+      const eventsResponse = await api.get('/events?limit=6&includeStats=1');
       const events = eventsResponse.data.data.events;
+      const globalStats = eventsResponse.data.data.stats;
 
       setRecentEvents(events);
 
       // Calculate stats
-      const totalEvents = eventsResponse.data.data.totalCount;
-      const totalParticipants = events.reduce((sum, event) => sum + event.participantCount, 0);
-      const totalVerifieds = events.reduce((sum, event) => sum + event.templateCount, 0);
+      const totalEvents = (globalStats && Number.isFinite(Number(globalStats.totalEvents)))
+        ? Number(globalStats.totalEvents)
+        : eventsResponse.data.data.totalCount;
+      const totalParticipants = (globalStats && Number.isFinite(Number(globalStats.totalParticipants)))
+        ? Number(globalStats.totalParticipants)
+        : events.reduce((sum, event) => sum + event.participantCount, 0);
+      const totalVerifieds = (globalStats && Number.isFinite(Number(globalStats.totalTemplates)))
+        ? Number(globalStats.totalTemplates)
+        : events.reduce((sum, event) => sum + event.templateCount, 0);
 
       setStats({
         totalEvents,
