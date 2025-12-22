@@ -37,7 +37,7 @@ class EventController {
 
   async getEvents(request, reply) {
     try {
-      const { page = 1, limit = 10, search = '', includeStats = '0' } = request.query;
+      const { page = 1, limit = 12, search = '', includeStats = '0' } = request.query;
 
       const result = await EventService.getEventsByUser(
         request.user.userId,

@@ -8,6 +8,66 @@ const { Op, where, literal } = require('sequelize');
 
 class CertificateController {
 
+  async getPublicDownloadEvents(request, reply) {
+    try {
+      const { page = 1, limit = 12, search = '' } = request.query || {};
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 12));
+      const offset = (pageNum - 1) * limitNum;
+
+      const baseWhere = {
+        isActive: true,
+        publicDownloadEnabled: true,
+        publicDownloadSlug: { [Op.ne]: null }
+      };
+
+      const q = String(search || '').trim();
+      const whereCondition = q
+        ? {
+          ...baseWhere,
+          [Op.or]: [
+            { title: { [Op.iLike]: `%${q}%` } },
+            { description: { [Op.iLike]: `%${q}%` } },
+            { location: { [Op.iLike]: `%${q}%` } }
+          ]
+        }
+        : baseWhere;
+
+      const { count, rows } = await Event.findAndCountAll({
+        where: whereCondition,
+        attributes: [
+          'id',
+          'uuid',
+          'title',
+          'description',
+          'startDate',
+          'endDate',
+          'location',
+          'publicDownloadSlug',
+          'publicDownloadEnabled'
+        ],
+        order: [['updatedAt', 'DESC']],
+        limit: limitNum,
+        offset
+      });
+
+      reply.send({
+        success: true,
+        data: {
+          events: rows.map((e) => e.toJSON()),
+          totalCount: count,
+          totalPages: Math.ceil(count / limitNum) || 1,
+          currentPage: pageNum,
+          limit: limitNum
+        }
+      });
+    } catch (error) {
+      reply.status(500).send({
+        error: error.message
+      });
+    }
+  }
+
   async getPublicDownloadPortalInfo(request, reply) {
     try {
       const { slug } = request.params;

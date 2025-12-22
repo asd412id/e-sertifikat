@@ -3,6 +3,7 @@ const { authenticateToken } = require('../middleware/auth');
 
 async function certificateRoutes(fastify, options) {
   // Public portal endpoints (no auth)
+  fastify.get('/public/events', CertificateController.getPublicDownloadEvents);
   fastify.get('/public/:slug', CertificateController.getPublicDownloadPortalInfo);
   fastify.post('/public/:slug/search', CertificateController.publicSearchParticipants);
   fastify.post('/public/:slug/participants/:participantId/download-pdf', CertificateController.publicDownloadCertificatePDFByParticipant);
