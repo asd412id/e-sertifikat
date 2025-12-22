@@ -37,12 +37,13 @@ class EventController {
 
   async getEvents(request, reply) {
     try {
-      const { page = 1, limit = 10 } = request.query;
+      const { page = 1, limit = 10, search = '' } = request.query;
 
       const result = await EventService.getEventsByUser(
         request.user.userId,
         parseInt(page),
-        parseInt(limit)
+        parseInt(limit),
+        search
       );
 
       reply.send({

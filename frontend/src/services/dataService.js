@@ -2,8 +2,8 @@ import api from './api';
 
 export const eventService = {
   // Get all events
-  getEvents: async (page = 1, limit = 10) => {
-    const response = await api.get(`/events?page=${page}&limit=${limit}`);
+  getEvents: async (page = 1, limit = 10, search = '') => {
+    const response = await api.get(`/events?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
     return response.data;
   },
 
@@ -74,12 +74,18 @@ export const participantService = {
     return response.data;
   },
 
+  // Delete all participants for an event
+  deleteAllParticipants: async (eventId) => {
+    const response = await api.delete(`/events/${eventId}/participants`);
+    return response.data;
+  },
+
   // Import participants from Excel
-  importParticipants: async (eventId, file) => {
+  importParticipants: async (eventId, file, mode = 'append') => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await api.post(`/events/${eventId}/participants/import`, formData, {
+    const response = await api.post(`/events/${eventId}/participants/import?mode=${encodeURIComponent(mode)}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

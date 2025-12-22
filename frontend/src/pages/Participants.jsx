@@ -73,6 +73,7 @@ const Participants = () => {
   const [participantFields, setParticipantFields] = useState([]);
   const [importDialog, setImportDialog] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [importMode, setImportMode] = useState('append');
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [downloading, setDownloading] = useState(null); // Changed to store participant ID
@@ -83,6 +84,8 @@ const Participants = () => {
   const [templateDialog, setTemplateDialog] = useState(false);
   const [bulkPdfDownloading, setBulkPdfDownloading] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState(null); // For individual downloads
+  const [deleteAllDialog, setDeleteAllDialog] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     if (eventId) {
@@ -215,7 +218,7 @@ const Participants = () => {
 
     try {
       setImporting(true);
-      const response = await participantService.importParticipants(eventId, importFile);
+      const response = await participantService.importParticipants(eventId, importFile, importMode);
 
       if (response.success) {
         const { success, failed, errors } = response.data;
@@ -231,12 +234,33 @@ const Participants = () => {
 
         setImportDialog(false);
         setImportFile(null);
+        setImportMode('append');
         fetchParticipants();
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Impor gagal');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleDeleteAllParticipants = async () => {
+    try {
+      setDeletingAll(true);
+      const response = await participantService.deleteAllParticipants(eventId);
+      if (response.success) {
+        const deletedCount = response.data?.deletedCount ?? 0;
+        toast.success(`Berhasil menghapus ${deletedCount} peserta`);
+      } else {
+        toast.success('Berhasil menghapus semua peserta');
+      }
+      setDeleteAllDialog(false);
+      setSelectedParticipants([]);
+      fetchParticipants(1, searchTerm);
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Gagal menghapus semua peserta');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -530,6 +554,17 @@ const Participants = () => {
             <Upload sx={{ mr: 1 }} />
             Impor dari Excel
           </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setDeleteAllDialog(true);
+              setAnchorEl(null);
+            }}
+            disabled={pagination.totalCount === 0}
+            sx={{ color: 'error.main' }}
+          >
+            <Delete sx={{ mr: 1 }} />
+            Hapus Semua Peserta
+          </MenuItem>
           <MenuItem onClick={() => { downloadTemplate(); setAnchorEl(null); }}>
             <Download sx={{ mr: 1 }} />
             Unduh Template
@@ -740,6 +775,17 @@ const Participants = () => {
                 </span>
               </Box>
             </Alert>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Mode Impor</InputLabel>
+              <Select
+                value={importMode}
+                label="Mode Impor"
+                onChange={(e) => setImportMode(e.target.value)}
+              >
+                <MenuItem value="append">Append (tambah ke data yang ada)</MenuItem>
+                <MenuItem value="replace">Data baru (hapus data lama)</MenuItem>
+              </Select>
+            </FormControl>
             <Button
               variant="outlined"
               startIcon={<Download />}
@@ -775,7 +821,7 @@ const Participants = () => {
             </Paper>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button onClick={() => setImportDialog(false)} sx={{ borderRadius: 2 }}>Batal</Button>
+            <Button onClick={() => { setImportDialog(false); setImportMode('append'); }} sx={{ borderRadius: 2 }}>Batal</Button>
             <Button
               onClick={handleImport}
               variant="contained"
@@ -784,6 +830,35 @@ const Participants = () => {
               sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
             >
               {importing ? 'Mengimpor...' : 'Impor'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete All Participants Dialog */}
+        <Dialog open={deleteAllDialog} onClose={() => setDeleteAllDialog(false)}>
+          <DialogTitle sx={{ fontWeight: 'bold', pb: 0 }}>Hapus Semua Peserta</DialogTitle>
+          <DialogContent sx={{ pt: 1, minWidth: 400 }}>
+            <Alert severity="warning" sx={{ borderRadius: 2 }}>
+              Tindakan ini akan menghapus <b>semua peserta</b> pada kegiatan ini.
+            </Alert>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setDeleteAllDialog(false)}
+              sx={{ borderRadius: 2 }}
+              disabled={deletingAll}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleDeleteAllParticipants}
+              variant="contained"
+              color="error"
+              disabled={deletingAll}
+              startIcon={deletingAll ? <CircularProgress size={20} /> : <Delete />}
+              sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 140 }}
+            >
+              {deletingAll ? 'Menghapus...' : 'Hapus Semua'}
             </Button>
           </DialogActions>
         </Dialog>

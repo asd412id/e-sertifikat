@@ -7,6 +7,7 @@ async function participantRoutes(fastify, options) {
 
   fastify.post('/events/:eventId/participants', ParticipantController.addParticipant);
   fastify.get('/events/:eventId/participants', ParticipantController.getParticipants);
+  fastify.delete('/events/:eventId/participants', ParticipantController.deleteAllParticipants);
   fastify.get('/events/:eventId/participants/export', ParticipantController.exportParticipants);
   fastify.post('/events/:eventId/participants/import', ParticipantController.importParticipants);
 

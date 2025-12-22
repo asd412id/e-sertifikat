@@ -26,6 +26,26 @@ class ParticipantController {
     }
   }
 
+  async deleteAllParticipants(request, reply) {
+    try {
+      const { eventId } = request.params;
+
+      const result = await ParticipantService.deleteAllParticipantsByEvent(
+        eventId,
+        request.user.userId
+      );
+
+      reply.send({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      reply.status(400).send({
+        error: error.message
+      });
+    }
+  }
+
   async getParticipants(request, reply) {
     try {
       const { eventId } = request.params;
@@ -169,6 +189,7 @@ class ParticipantController {
   async importParticipants(request, reply) {
     try {
       const { eventId } = request.params;
+      const { mode = 'append' } = request.query;
       const data = await request.file();
 
       if (!data) {
@@ -195,7 +216,8 @@ class ParticipantController {
       const result = await ParticipantService.importFromExcel(
         eventId,
         tempFilePath,
-        request.user.userId
+        request.user.userId,
+        mode
       );
 
       // Clean up temp file

@@ -1,4 +1,5 @@
 const { Event, Participant, CertificateTemplate } = require('../models');
+const { Op } = require('sequelize');
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
@@ -28,12 +29,26 @@ class EventService {
     }
   }
 
-  async getEventsByUser(userId, page = 1, limit = 10) {
+  async getEventsByUser(userId, page = 1, limit = 10, search = '') {
     try {
       const offset = (page - 1) * limit;
 
+      let whereCondition = { userId, isActive: true };
+      const normalizedSearch = String(search || '').trim();
+      if (normalizedSearch) {
+        whereCondition = {
+          userId,
+          isActive: true,
+          [Op.or]: [
+            { title: { [Op.iLike]: `%${normalizedSearch}%` } },
+            { description: { [Op.iLike]: `%${normalizedSearch}%` } },
+            { location: { [Op.iLike]: `%${normalizedSearch}%` } }
+          ]
+        };
+      }
+
       const { count, rows } = await Event.findAndCountAll({
-        where: { userId, isActive: true },
+        where: whereCondition,
         include: [
           {
             model: Participant,
@@ -60,7 +75,8 @@ class EventService {
         })),
         totalCount: count,
         totalPages: Math.ceil(count / limit),
-        currentPage: page
+        currentPage: page,
+        limit
       };
     } catch (error) {
       throw error;

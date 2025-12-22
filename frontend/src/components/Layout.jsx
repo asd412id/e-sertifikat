@@ -104,16 +104,44 @@ const Layout = ({ children }) => {
             borderColor: 'divider'
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            <Avatar sx={{ width: 40, height: 40, mr: 2, bgcolor: 'primary.main' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Avatar
+              sx={{
+                width: 44,
+                height: 44,
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                fontWeight: 800,
+                fontSize: 18,
+                flexShrink: 0
+              }}
+            >
               {user?.fullName?.charAt(0)?.toUpperCase()}
             </Avatar>
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-                {user?.fullName}
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {user?.fullName || '-'}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {user?.email}
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  display: 'block',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {user?.email || ''}
               </Typography>
             </Box>
           </Box>

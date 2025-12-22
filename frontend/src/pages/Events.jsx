@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -30,7 +30,8 @@ import {
   Divider,
   CardActions,
   Avatar,
-  Pagination
+  Pagination,
+  InputAdornment
 } from '@mui/material';
 import {
   Add,
@@ -44,7 +45,8 @@ import {
   Settings,
   CalendarMonth,
   AccessTime,
-  Article
+  Article,
+  Search
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -56,12 +58,14 @@ import toast from 'react-hot-toast';
 const Events = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const didInitSearchEffect = useRef(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
     totalCount: 0,
     limit: 10
   });
+  const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [formData, setFormData] = useState({
@@ -86,10 +90,26 @@ const Events = () => {
     fetchEvents();
   }, []);
 
-  const fetchEvents = async (page = 1) => {
+  // Debounce search
+  useEffect(() => {
+    if (!didInitSearchEffect.current) {
+      didInitSearchEffect.current = true;
+      return;
+    }
+
+    const handler = setTimeout(() => {
+      fetchEvents(1, searchTerm);
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTerm]);
+
+  const fetchEvents = async (page = 1, search = searchTerm) => {
     try {
       setLoading(true);
-      const response = await eventService.getEvents(page, pagination.limit);
+      const response = await eventService.getEvents(page, pagination.limit, search);
       setEvents(response.data.events);
       setPagination({
         currentPage: response.data.currentPage,
@@ -102,6 +122,11 @@ const Events = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    fetchEvents(1, searchTerm);
   };
 
   const handleOpenDialog = (event = null) => {
@@ -291,6 +316,35 @@ const Events = () => {
           </Stack>
         </Paper>
 
+        {/* Search + Total */}
+        {events.length > 0 && (
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Box width={{ xs: '100%', sm: 360 }}>
+              <form onSubmit={handleSearchSubmit}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Cari kegiatan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search fontSize="small" />
+                      </InputAdornment>
+                    )
+                  }}
+                />
+              </form>
+            </Box>
+            <Box display={{ xs: 'none', sm: 'block' }}>
+              <Typography variant="body2" color="text.secondary">
+                Total: {pagination.totalCount} kegiatan
+              </Typography>
+            </Box>
+          </Box>
+        )}
+
         {events.length === 0 ? (
           <Paper elevation={0} sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 3 }}>
             <CardContent>
@@ -327,15 +381,31 @@ const Events = () => {
                     border: '1px solid',
                     borderColor: 'divider',
                     transition: 'all 0.2s ease-in-out',
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
                     '&:hover': {
                       boxShadow: '0 8px 25px rgba(0,0,0,0.12)',
                       transform: 'translateY(-2px)'
                     }
                   }}
                 >
-                  <CardContent sx={{ p: 3 }}>
+                  <CardContent sx={{ p: 3, flex: 1 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                      <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', flex: 1 }}>
+                      <Typography
+                        variant="h6"
+                        gutterBottom
+                        sx={{
+                          fontWeight: 'bold',
+                          flex: 1,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          lineHeight: 1.25,
+                          minHeight: '2.5em'
+                        }}
+                      >
                         {event.title}
                       </Typography>
                       <Box>
@@ -373,11 +443,21 @@ const Events = () => {
                       </Box>
                     </Box>
 
-                    {event.description && (
-                      <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
-                        {event.description}
-                      </Typography>
-                    )}
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                      sx={{
+                        mb: 2,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        minHeight: event.description ? '2.5em' : 0
+                      }}
+                    >
+                      {event.description || ''}
+                    </Typography>
 
                     <Stack spacing={1.5} sx={{ mb: 3 }}>
                       <Box display="flex" alignItems="center">
@@ -479,7 +559,7 @@ const Events = () => {
             <Pagination
               count={pagination.totalPages}
               page={pagination.currentPage}
-              onChange={(event, page) => fetchEvents(page)}
+              onChange={(event, page) => fetchEvents(page, searchTerm)}
               color="primary"
               showFirstButton
               showLastButton

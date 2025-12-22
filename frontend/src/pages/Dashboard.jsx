@@ -101,7 +101,7 @@ const Dashboard = () => {
     },
   ];
 
-  const StatCard = ({ title, value, icon, color, bgColor, gradient, description }) => (
+  const StatCard = ({ title, value, icon, color, bgColor, gradient, description, onClick }) => (
     <Card
       elevation={0}
       sx={{
@@ -110,9 +110,20 @@ const Dashboard = () => {
         borderColor: 'divider',
         borderRadius: 3,
         transition: 'all 0.3s ease',
+        cursor: onClick ? 'pointer' : 'default',
         '&:hover': {
           transform: 'translateY(-4px)',
           boxShadow: 3,
+        }
+      }}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
         }
       }}
     >
@@ -218,7 +229,10 @@ const Dashboard = () => {
           <Grid container spacing={3} sx={{ mb: 4 }}>
             {statsData.map((stat, index) => (
               <Grid item xs={12} sm={6} md={4} key={index}>
-                <StatCard {...stat} />
+                <StatCard
+                  {...stat}
+                  onClick={() => navigate('/events')}
+                />
               </Grid>
             ))}
           </Grid>
@@ -275,9 +289,19 @@ const Dashboard = () => {
                       borderColor: 'divider',
                       borderRadius: 2,
                       transition: 'all 0.3s ease',
+                      cursor: 'pointer',
                       '&:hover': {
                         transform: 'translateY(-2px)',
                         boxShadow: 2,
+                      }
+                    }}
+                    onClick={() => navigate(`/events/${event.uuid || event.id}/certificates`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/events/${event.uuid || event.id}/certificates`);
                       }
                     }}
                   >

@@ -143,10 +143,51 @@ class ParticipantService {
     }
   }
 
-  async importFromExcel(eventId, filePath, userId) {
+  async deleteAllParticipantsByEvent(eventId, userId) {
+    try {
+      const event = await this.getEventByUuid(eventId, userId);
+
+      const participants = await Participant.findAll({
+        where: { eventId: event.id }
+      });
+
+      for (const participant of participants) {
+        if (participant.certificateUrl) {
+          const certificatePath = participant.certificateUrl;
+          if (certificatePath.startsWith('/uploads/')) {
+            const fileName = certificatePath.replace('/uploads/', '');
+            const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
+            try {
+              await fs.unlink(filePath);
+            } catch (error) {
+              console.log(`Failed to delete certificate: ${filePath}`);
+            }
+          }
+        }
+      }
+
+      const deletedCount = await Participant.destroy({
+        where: { eventId: event.id }
+      });
+
+      return { deletedCount };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async importFromExcel(eventId, filePath, userId, mode = 'append') {
     try {
       // Verify event ownership
       const event = await this.getEventByUuid(eventId, userId);
+
+      if (mode !== 'append' && mode !== 'replace') {
+        throw new Error("Invalid import mode. Use 'append' or 'replace'");
+      }
+
+      if (mode === 'replace') {
+        await this.deleteAllParticipantsByEvent(eventId, userId);
+      }
 
       // Read Excel file
       const workbook = xlsx.readFile(filePath);
