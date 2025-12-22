@@ -185,6 +185,107 @@ class CertificateService {
     }
   }
 
+  async copyTemplate(templateId, userId, name, targetEventId) {
+    try {
+      const template = await CertificateTemplate.findOne({
+        where: { uuid: templateId, isActive: true },
+        include: [{
+          model: Event,
+          as: 'event',
+          where: { userId, isActive: true }
+        }]
+      });
+
+      if (!template) {
+        throw new Error('Template not found');
+      }
+
+      const nextNameRaw = (typeof name === 'string' && name.trim())
+        ? name.trim()
+        : `${template.name} (Copy)`;
+
+      const nextName = nextNameRaw.length > 100
+        ? nextNameRaw.substring(0, 100)
+        : nextNameRaw;
+
+      const design = template.design ? JSON.parse(JSON.stringify(template.design)) : {};
+
+      const uploadDir = process.env.UPLOAD_DIR || './uploads';
+      const copyUploadFile = async (maybeUploadPath) => {
+        if (!maybeUploadPath || typeof maybeUploadPath !== 'string') return maybeUploadPath;
+        if (!maybeUploadPath.startsWith('/uploads/')) return maybeUploadPath;
+
+        const rel = maybeUploadPath.replace('/uploads/', '');
+        const srcPath = path.join(uploadDir, rel);
+        const base = path.basename(rel);
+        const ext = path.extname(base);
+        const baseNoExt = ext ? base.slice(0, -ext.length) : base;
+        const unique = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const destFile = `copy_${unique}_${baseNoExt}${ext}`;
+        const destPath = path.join(uploadDir, destFile);
+
+        try {
+          await fs.copyFile(srcPath, destPath);
+          return `/uploads/${destFile}`;
+        } catch (error) {
+          console.log(`Failed to copy upload file (kept original): ${srcPath} -> ${destPath} (${error.message})`);
+          return maybeUploadPath;
+        }
+      };
+
+      const normalizePages = (d) => {
+        if (d?.pages && Array.isArray(d.pages) && d.pages.length) return d.pages;
+        return [{
+          objects: Array.isArray(d?.objects) ? d.objects : [],
+          background: d?.background || null
+        }];
+      };
+
+      const pages = normalizePages(design);
+      for (const page of pages) {
+        if (page && page.background) {
+          page.background = await copyUploadFile(page.background);
+        }
+        if (page && Array.isArray(page.objects)) {
+          for (const obj of page.objects) {
+            if (obj && obj.type === 'image' && obj.src) {
+              obj.src = await copyUploadFile(obj.src);
+            }
+          }
+        }
+      }
+      if (design?.pages && Array.isArray(design.pages)) {
+        design.pages = pages;
+      } else {
+        const only = pages[0] || { objects: [], background: null };
+        design.objects = only.objects;
+        design.background = only.background;
+      }
+
+      const backgroundImage = await copyUploadFile(template.backgroundImage || null);
+
+      let destinationEventId = template.eventId;
+      if (targetEventId) {
+        const destEvent = await this.getEventByUuid(targetEventId, userId);
+        destinationEventId = destEvent.id;
+      }
+
+      const copied = await CertificateTemplate.create({
+        name: nextName,
+        design,
+        backgroundImage,
+        width: template.width,
+        height: template.height,
+        eventId: destinationEventId,
+        isActive: true
+      });
+
+      return copied;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async generateCertificate(templateId, participantId, userId) {
     try {
       // Get template

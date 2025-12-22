@@ -34,7 +34,8 @@ import {
   CardActions,
   Pagination,
   ToggleButton,
-  ToggleButtonGroup
+  ToggleButtonGroup,
+  InputAdornment
 } from '@mui/material';
 import {
   Add,
@@ -292,6 +293,13 @@ const Certificates = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copyTemplateName, setCopyTemplateName] = useState('');
+  const [copyingTemplate, setCopyingTemplate] = useState(false);
+  const [copyTargetEventId, setCopyTargetEventId] = useState('');
+  const [copyEvents, setCopyEvents] = useState([]);
+  const [loadingCopyEvents, setLoadingCopyEvents] = useState(false);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState([]);
@@ -1388,6 +1396,59 @@ const Certificates = () => {
     }
   };
 
+  const handleOpenCopyTemplate = (template) => {
+    if (!template) return;
+    setSelectedTemplate(template);
+    setCopyTemplateName(`${template.name} (Copy)`);
+    setCopyTargetEventId(eventId || '');
+    setCopyDialogOpen(true);
+    setAnchorEl(null);
+    loadCopyEvents();
+  };
+
+  const loadCopyEvents = async () => {
+    try {
+      setLoadingCopyEvents(true);
+      const resp = await eventService.getEvents(1, 1000, '');
+      const rows = resp?.data?.events || [];
+      const list = Array.isArray(rows) ? rows : [];
+      setCopyEvents(list);
+    } catch (_) {
+      setCopyEvents([]);
+    } finally {
+      setLoadingCopyEvents(false);
+    }
+  };
+
+  const handleCopyTemplate = async () => {
+    if (!selectedTemplate?.uuid) return;
+    const name = String(copyTemplateName || '').trim();
+    if (!name) {
+      toast.error('Nama template wajib diisi');
+      return;
+    }
+    try {
+      setCopyingTemplate(true);
+      await certificateService.copyTemplate(selectedTemplate.uuid, {
+        name,
+        targetEventId: copyTargetEventId || undefined
+      });
+      toast.success(copyTargetEventId && copyTargetEventId !== eventId
+        ? 'Template berhasil disalin ke kegiatan lain'
+        : 'Template berhasil disalin');
+      setCopyDialogOpen(false);
+      setCopyTemplateName('');
+      setCopyTargetEventId('');
+      if (!copyTargetEventId || copyTargetEventId === eventId) {
+        fetchTemplates(pagination.currentPage || 1);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Gagal menyalin template');
+    } finally {
+      setCopyingTemplate(false);
+    }
+  };
+
   const handleDownloadAll = async (templateId) => {
     try {
       setGenerating(true);
@@ -2051,6 +2112,13 @@ const Certificates = () => {
           }}
         >
           <MenuItem
+            onClick={() => handleOpenCopyTemplate(selectedTemplate)}
+            sx={{ py: 1.5 }}
+          >
+            <ContentCopy sx={{ mr: 1.5 }} />
+            Salin Template
+          </MenuItem>
+          <MenuItem
             onClick={() => handleDeleteTemplate(selectedTemplate?.uuid)}
             sx={{ py: 1.5, color: 'error.main' }}
           >
@@ -2058,6 +2126,74 @@ const Certificates = () => {
             Hapus Template
           </MenuItem>
         </Menu>
+
+        {/* Dialog Salin Template */}
+        <Dialog
+          open={copyDialogOpen}
+          onClose={() => {
+            setCopyDialogOpen(false);
+            setCopyTemplateName('');
+            setCopyTargetEventId('');
+          }}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 3 } }}
+        >
+          <DialogTitle sx={{ fontWeight: 'bold' }}>Salin Template Sertifikat</DialogTitle>
+          <DialogContent sx={{ pt: 1.5 }}>
+            <FormControl fullWidth size="small" margin="dense">
+              <InputLabel id="copy-target-event-label" shrink>
+                Kegiatan Tujuan
+              </InputLabel>
+              <Select
+                labelId="copy-target-event-label"
+                label="Kegiatan Tujuan"
+                value={copyTargetEventId}
+                onChange={(e) => setCopyTargetEventId(e.target.value)}
+                displayEmpty
+                disabled={loadingCopyEvents || copyingTemplate}
+              >
+                <MenuItem value={eventId || ''}>Kegiatan saat ini</MenuItem>
+                {(copyEvents || [])
+                  .filter((ev) => ev && ev.uuid && ev.uuid !== eventId)
+                  .map((ev) => (
+                    <MenuItem key={ev.uuid} value={ev.uuid}>{ev.title}</MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Nama Template Baru"
+              value={copyTemplateName}
+              onChange={(e) => setCopyTemplateName(e.target.value)}
+              autoFocus
+              margin="dense"
+              InputLabelProps={{ shrink: true }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => {
+                setCopyDialogOpen(false);
+                setCopyTemplateName('');
+                setCopyTargetEventId('');
+              }}
+              sx={{ borderRadius: 2 }}
+              disabled={copyingTemplate}
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleCopyTemplate}
+              variant="contained"
+              sx={{ borderRadius: 2, fontWeight: 700 }}
+              disabled={copyingTemplate}
+              startIcon={copyingTemplate ? <CircularProgress size={18} color="inherit" /> : <ContentCopy />}
+            >
+              Salin
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Dialog Editor Sertifikat */}
         <Dialog

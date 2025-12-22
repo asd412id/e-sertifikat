@@ -100,6 +100,30 @@ class CertificateController {
     }
   }
 
+  async copyTemplate(request, reply) {
+    try {
+      const { id } = request.params;
+      const { name, targetEventId } = request.body || {};
+
+      const template = await CertificateService.copyTemplate(
+        id,
+        request.user.userId,
+        name,
+        targetEventId
+      );
+
+      reply.status(201).send({
+        success: true,
+        message: 'Template copied successfully',
+        data: { template }
+      });
+    } catch (error) {
+      reply.status(400).send({
+        error: error.message
+      });
+    }
+  }
+
   async publicSearchParticipants(request, reply) {
     try {
       const { slug } = request.params;

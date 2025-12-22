@@ -131,6 +131,12 @@ export const certificateService = {
     return response.data;
   },
 
+  // Copy template
+  copyTemplate: async (id, payload = {}) => {
+    const response = await api.post(`/certificates/templates/${id}/copy`, payload);
+    return response.data;
+  },
+
   // Upload background image
   uploadBackground: async (file) => {
     const formData = new FormData();

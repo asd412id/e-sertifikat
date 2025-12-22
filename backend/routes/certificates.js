@@ -17,6 +17,7 @@ async function certificateRoutes(fastify, options) {
   fastify.get('/templates/:id', { preHandler: authenticateToken }, CertificateController.getTemplateById);
   fastify.put('/templates/:id', { preHandler: authenticateToken }, CertificateController.updateTemplate);
   fastify.delete('/templates/:id', { preHandler: authenticateToken }, CertificateController.deleteTemplate);
+  fastify.post('/templates/:id/copy', { preHandler: authenticateToken }, CertificateController.copyTemplate);
 
   // Generate and download individual certificate (legacy - will be deprecated) (auth)
   fastify.post(
