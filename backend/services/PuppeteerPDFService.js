@@ -4,6 +4,7 @@ const fsSync = require('fs');
 const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
+const { PDFDocument } = require('pdf-lib');
 // Removed unused locale import
 
 class PuppeteerPDFService {
@@ -14,6 +15,36 @@ class PuppeteerPDFService {
     this._jobQueue = [];
     this._fontsCssInFlight = new Map();
     this._assetBufferCache = new Map();
+  }
+
+  async _applyPdfMetadata(pdfBuffer, template, participants) {
+    try {
+      const appName = String(process.env.PDF_APP_NAME || 'e-Sertifikat').trim() || 'e-Sertifikat';
+      const author = String(process.env.PDF_AUTHOR || appName).trim() || appName;
+      const creator = String(process.env.PDF_CREATOR || appName).trim() || appName;
+      const producer = String(process.env.PDF_PRODUCER || appName).trim() || appName;
+      const subject = String(process.env.PDF_SUBJECT || 'Sertifikat').trim() || 'Sertifikat';
+      const keywords = String(process.env.PDF_KEYWORDS || 'sertifikat, certificate, e-sertifikat').trim();
+
+      const baseTitle = String(template?.name || template?.title || 'Sertifikat').trim() || 'Sertifikat';
+      const title = baseTitle;
+
+      const pdfDoc = await PDFDocument.load(pdfBuffer, { updateMetadata: false });
+      pdfDoc.setTitle(title);
+      pdfDoc.setAuthor(author);
+      pdfDoc.setSubject(subject);
+      if (keywords) {
+        pdfDoc.setKeywords(keywords.split(',').map(s => s.trim()).filter(Boolean));
+      }
+      pdfDoc.setCreator(creator);
+      pdfDoc.setProducer(producer);
+      pdfDoc.setCreationDate(new Date());
+      pdfDoc.setModificationDate(new Date());
+
+      return await pdfDoc.save();
+    } catch (e) {
+      return pdfBuffer;
+    }
   }
 
   _getAssetCacheTtlMs() {
@@ -355,11 +386,16 @@ class PuppeteerPDFService {
       const tPdfEnd = Date.now();
       console.log(`page.pdf took ${tPdfEnd - tPdfStart}ms`);
 
+      const tMetaStart = Date.now();
+      const branded = await this._applyPdfMetadata(pdfBuffer, template, list);
+      const tMetaEnd = Date.now();
+      console.log(`pdf metadata took ${tMetaEnd - tMetaStart}ms`);
+
       const tEnd = Date.now();
       console.log(`Total createPDF took ${tEnd - t0}ms (init+newPage: ${tInit - t0}ms)`);
 
       console.log(`PDF generated successfully for ${list.length} participant(s)`);
-      return pdfBuffer;
+      return branded;
     } catch (error) {
       console.error('Error generating bulk PDF:', error);
       throw error;
