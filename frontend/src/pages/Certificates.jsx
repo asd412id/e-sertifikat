@@ -536,6 +536,12 @@ const Certificates = () => {
       if (!selectedElement && (!selectedElementIds || !selectedElementIds.length)) return;
       if (isEditableTarget(e.target)) return;
 
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        requestDeleteSelected();
+        return;
+      }
+
       let step;
       if (e.shiftKey) step = 10;
       else if (e.altKey) step = 1;

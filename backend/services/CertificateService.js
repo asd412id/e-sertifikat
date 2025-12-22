@@ -123,25 +123,91 @@ class CertificateService {
       delete updatePayload.id;
       delete updatePayload.uuid;
 
-      // Check if we're updating the background image
-      if (updatePayload.design && updatePayload.design.background &&
-        template.design && template.design.background &&
-        updatePayload.design.background !== template.design.background) {
-        // Delete old background image file if it exists and is different from the new one
-        const oldBackgroundPath = template.design.background;
-        if (oldBackgroundPath.startsWith('/uploads/')) {
-          const oldFileName = oldBackgroundPath.replace('/uploads/', '');
-          const oldFilePath = path.join(process.env.UPLOAD_DIR || './uploads', oldFileName);
+      const collectUploadAssetsFromDesign = (design) => {
+        const assets = new Set();
+        if (!design || typeof design !== 'object') return assets;
+
+        const add = (p) => {
+          if (typeof p === 'string' && p.startsWith('/uploads/')) assets.add(p);
+        };
+
+        const pages = (design.pages && Array.isArray(design.pages))
+          ? design.pages
+          : [{ background: design.background, objects: Array.isArray(design.objects) ? design.objects : [] }];
+
+        for (const page of pages) {
+          if (!page) continue;
+          add(page.background);
+          const objects = Array.isArray(page.objects) ? page.objects : [];
+          for (const obj of objects) {
+            if (!obj) continue;
+            if (obj.type === 'image') add(obj.src);
+          }
+        }
+
+        return assets;
+      };
+
+      const uploadDir = process.env.UPLOAD_DIR || './uploads';
+
+      const oldDesign = template.design || {};
+      const newDesign = (Object.prototype.hasOwnProperty.call(updatePayload, 'design')
+        ? (updatePayload.design || {})
+        : oldDesign);
+
+      const oldAssets = collectUploadAssetsFromDesign(oldDesign);
+      const newAssets = collectUploadAssetsFromDesign(newDesign);
+
+      // include backgroundImage column if used
+      if (typeof template.backgroundImage === 'string' && template.backgroundImage.startsWith('/uploads/')) {
+        oldAssets.add(template.backgroundImage);
+      }
+      if (Object.prototype.hasOwnProperty.call(updatePayload, 'backgroundImage')) {
+        if (typeof updatePayload.backgroundImage === 'string' && updatePayload.backgroundImage.startsWith('/uploads/')) {
+          newAssets.add(updatePayload.backgroundImage);
+        }
+      } else if (typeof template.backgroundImage === 'string' && template.backgroundImage.startsWith('/uploads/')) {
+        newAssets.add(template.backgroundImage);
+      }
+
+      const removedAssets = Array.from(oldAssets).filter((p) => !newAssets.has(p));
+
+      await template.update(updatePayload);
+
+      // Garbage collect removed upload assets if they are no longer referenced by other active templates
+      if (removedAssets.length) {
+        const otherTemplates = await CertificateTemplate.findAll({
+          where: { isActive: true },
+          attributes: ['uuid', 'design', 'backgroundImage']
+        });
+
+        const isReferencedByOthers = (assetPath) => {
+          for (const t of otherTemplates) {
+            if (!t || t.uuid === template.uuid) continue;
+            if (t.backgroundImage === assetPath) return true;
+            try {
+              const d = t.design;
+              if (d && JSON.stringify(d).includes(assetPath)) return true;
+            } catch (_) {
+              // ignore stringify errors
+            }
+          }
+          return false;
+        };
+
+        for (const assetPath of removedAssets) {
+          if (isReferencedByOthers(assetPath)) continue;
+          const fileName = assetPath.replace('/uploads/', '');
+          const filePath = path.join(uploadDir, fileName);
           try {
-            await fs.unlink(oldFilePath);
+            await fs.unlink(filePath);
           } catch (error) {
-            // Ignore error if file doesn't exist
-            console.log(`Failed to delete old background image: ${oldFilePath}`);
+            // Ignore if missing
+            console.log(`Failed to delete unreferenced asset: ${filePath}`);
           }
         }
       }
 
-      await template.update(updatePayload);
       return template;
     } catch (error) {
       throw error;
