@@ -539,7 +539,8 @@ class PuppeteerPDFService {
             if (element.fontStyle) styles.push(`font-style: ${element.fontStyle}`);
             if (element.textDecoration) styles.push(`text-decoration: ${element.textDecoration}`);
             if (typeof element.opacity === 'number') styles.push(`opacity: ${element.opacity}`);
-            if (typeof element.letterSpacing === 'number') styles.push(`letter-spacing: ${element.letterSpacing}px`);
+            const letterSpacing = Number(element.letterSpacing);
+            if (Number.isFinite(letterSpacing)) styles.push(`letter-spacing: ${letterSpacing}px`);
 
             // Position styles
             styles.push('position: absolute');

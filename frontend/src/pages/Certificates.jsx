@@ -259,7 +259,8 @@ const Certificates = () => {
     verticalAlign: 'top',
     width: 200,
     wordWrap: true,
-    lineHeight: 1
+    lineHeight: 1,
+    letterSpacing: 0
   });
 
   // Centralized list of available fonts for selection (includes system and Google fonts)
@@ -985,6 +986,7 @@ const Certificates = () => {
       width: 200, // Set default width for proper alignment
       wordWrap: textProperties.wordWrap,
       lineHeight: textProperties.lineHeight,
+      letterSpacing: typeof textProperties.letterSpacing === 'number' ? textProperties.letterSpacing : 0,
       draggable: true
     };
     setElements([...elements, newText]);
@@ -1037,6 +1039,7 @@ const Certificates = () => {
       verticalAlign: 'top',
       wordWrap: textProperties.wordWrap,
       lineHeight: textProperties.lineHeight,
+      letterSpacing: 0,
       draggable: true,
       isDynamic: true,
       fieldName: field.name
@@ -1077,7 +1080,8 @@ const Certificates = () => {
         width: element.width || 200,
         wordWrap: element.wordWrap !== undefined ? element.wordWrap : true
         ,
-        lineHeight: element.lineHeight || 1
+        lineHeight: element.lineHeight || 1,
+        letterSpacing: typeof element.letterSpacing === 'number' ? element.letterSpacing : 0
       });
     } else if (element.type === 'image') {
       // ensure image cached (for existing templates)
@@ -3098,6 +3102,7 @@ const Certificates = () => {
                                 fill={element.fill}
                                 fontStyle={`${element.fontStyle === 'italic' ? 'italic' : 'normal'} ${element.fontWeight === 'bold' ? 'bold' : 'normal'}`.trim()}
                                 textDecoration={element.textDecoration}
+                                letterSpacing={typeof element.letterSpacing === 'number' ? element.letterSpacing : 0}
                                 align={element.align || 'left'}
                                 width={element.width || 200}
                                 lineHeight={element.lineHeight || 1}
