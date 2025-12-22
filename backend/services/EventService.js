@@ -29,7 +29,7 @@ class EventService {
     }
   }
 
-  async getEventsByUser(userId, page = 1, limit = 10, search = '', includeStats = false) {
+  async getEventsByUser(userId, page = 1, limit = 12, search = '', includeStats = false) {
     try {
       const offset = (page - 1) * limit;
 
