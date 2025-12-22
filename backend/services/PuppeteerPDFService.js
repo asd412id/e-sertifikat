@@ -13,6 +13,49 @@ class PuppeteerPDFService {
     this._activeJobs = 0;
     this._jobQueue = [];
     this._fontsCssInFlight = new Map();
+    this._assetBufferCache = new Map();
+  }
+
+  _getAssetCacheTtlMs() {
+    const v = parseInt(process.env.PUPPETEER_ASSET_CACHE_TTL_MS, 10);
+    if (Number.isFinite(v) && v > 0) return v;
+    return 60 * 60 * 1000;
+  }
+
+  _getAssetCacheMaxItems() {
+    const v = parseInt(process.env.PUPPETEER_ASSET_CACHE_MAX_ITEMS, 10);
+    if (Number.isFinite(v) && v > 0) return Math.min(v, 5000);
+    return 1000;
+  }
+
+  _cacheGet(key) {
+    try {
+      const rec = this._assetBufferCache && this._assetBufferCache.get(key);
+      if (!rec) return null;
+      const ttl = this._getAssetCacheTtlMs();
+      if (Date.now() - rec.ts > ttl) {
+        this._assetBufferCache.delete(key);
+        return null;
+      }
+      rec.ts = Date.now();
+      return rec;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _cacheSet(key, rec) {
+    try {
+      if (!this._assetBufferCache) return;
+      const max = this._getAssetCacheMaxItems();
+      if (this._assetBufferCache.size >= max) {
+        const firstKey = this._assetBufferCache.keys().next().value;
+        if (firstKey) this._assetBufferCache.delete(firstKey);
+      }
+      this._assetBufferCache.set(key, rec);
+    } catch (_) {
+      // ignore
+    }
   }
 
   _getConcurrencyLimit() {
@@ -153,9 +196,12 @@ class PuppeteerPDFService {
           try {
             // Check if file exists
             if (fsSync.existsSync(filePath)) {
-              const data = fsSync.readFileSync(filePath);
-              const extension = path.extname(filePath).toLowerCase();
-              let contentType = 'application/octet-stream';
+              const cacheKey = `${isFonts ? 'font' : 'upload'}:${filePath}`;
+              const cached = this._cacheGet(cacheKey);
+              const data = cached?.data || fsSync.readFileSync(filePath);
+
+              const extension = cached?.extension || path.extname(filePath).toLowerCase();
+              let contentType = cached?.contentType || 'application/octet-stream';
 
               if (extension === '.png') {
                 contentType = 'image/png';
@@ -169,11 +215,20 @@ class PuppeteerPDFService {
                 contentType = 'font/ttf';
               }
 
+              if (!cached) {
+                this._cacheSet(cacheKey, {
+                  ts: Date.now(),
+                  data,
+                  extension,
+                  contentType
+                });
+              }
+
               request.respond({
                 status: 200,
                 contentType: contentType,
                 headers: {
-                  'Cache-Control': 'public, max-age=31536000'
+                  'Cache-Control': 'public, max-age=31536000, immutable'
                 },
                 body: data
               });
@@ -411,11 +466,24 @@ class PuppeteerPDFService {
     }
 
     // Start building HTML
+    const safeTitleBase = String(template?.name || template?.title || 'Sertifikat').trim() || 'Sertifikat';
+    const safeTitle = safeTitleBase
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     let html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="id">
     <head>
       <meta charset="UTF-8">
+      <title>${safeTitle}</title>
+      <meta name="title" content="${safeTitle}">
+      <meta name="author" content="e-Sertifikat">
+      <meta name="subject" content="Sertifikat">
+      <meta name="keywords" content="sertifikat, certificate, e-sertifikat">
       ${googleFontsImport}
       ${backgroundPreloadLink}
       <style>
