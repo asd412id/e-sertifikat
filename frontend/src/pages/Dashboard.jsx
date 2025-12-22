@@ -87,7 +87,7 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const eventsResponse = await api.get('/events?limit=5');
+      const eventsResponse = await api.get('/events?limit=6');
       const events = eventsResponse.data.data.events;
 
       setRecentEvents(events);
@@ -319,7 +319,7 @@ const Dashboard = () => {
             </Box>
           ) : recentEvents.length > 0 ? (
             <Grid container spacing={3}>
-              {recentEvents.map((event) => (
+              {recentEvents.slice(0, 6).map((event) => (
                 <Grid item xs={12} md={6} lg={4} key={event.id}>
                   <Card
                     elevation={0}

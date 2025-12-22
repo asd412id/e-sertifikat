@@ -38,6 +38,7 @@ import {
   Edit,
   Delete,
   ContentCopy,
+  Link as LinkIcon,
   People,
   Verified,
   Event as EventIcon,
@@ -129,6 +130,26 @@ const Events = () => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     fetchEvents(1, searchTerm);
+  };
+
+  const getPublicDownloadUrl = (event) => {
+    const slug = event?.publicDownloadSlug;
+    if (!slug) return '';
+    return `${window.location.origin}/download/${slug}`;
+  };
+
+  const handleCopyPublicLink = async (event) => {
+    try {
+      const url = getPublicDownloadUrl(event);
+      if (!url) {
+        toast.error('Link belum tersedia');
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success('Link berhasil disalin');
+    } catch {
+      toast.error('Gagal menyalin link');
+    }
   };
 
   const handleOpenDialog = (event = null) => {
@@ -459,6 +480,23 @@ const Events = () => {
                             <Edit />
                           </IconButton>
                         </Tooltip>
+                        {event?.publicDownloadSlug && (
+                          <Tooltip title="Salin Link">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleCopyPublicLink(event)}
+                              sx={{
+                                ml: 0.75,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                bgcolor: 'rgba(2, 6, 23, 0.02)',
+                                '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.04)' }
+                              }}
+                            >
+                              <LinkIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="Salin Kegiatan">
                           <IconButton
                             size="small"
