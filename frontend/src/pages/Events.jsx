@@ -37,6 +37,7 @@ import {
   Add,
   Edit,
   Delete,
+  ContentCopy,
   People,
   Verified,
   Event as EventIcon,
@@ -68,6 +69,7 @@ const Events = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [isCopyMode, setIsCopyMode] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -132,6 +134,7 @@ const Events = () => {
   const handleOpenDialog = (event = null) => {
     if (event) {
       setSelectedEvent(event);
+      setIsCopyMode(false);
       setFormData({
         title: event.title,
         description: event.description || '',
@@ -142,6 +145,7 @@ const Events = () => {
       });
     } else {
       setSelectedEvent(null);
+      setIsCopyMode(false);
       setFormData({
         title: '',
         description: '',
@@ -157,9 +161,25 @@ const Events = () => {
     setOpenDialog(true);
   };
 
+  const handleOpenCopyDialog = (event) => {
+    if (!event) return;
+    setSelectedEvent(null);
+    setIsCopyMode(true);
+    setFormData({
+      title: event.title,
+      description: event.description || '',
+      startDate: format(new Date(event.startDate), 'yyyy-MM-dd'),
+      endDate: format(new Date(event.endDate), 'yyyy-MM-dd'),
+      location: event.location || '',
+      participantFields: event.participantFields || []
+    });
+    setOpenDialog(true);
+  };
+
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setSelectedEvent(null);
+    setIsCopyMode(false);
   };
 
   const handleInputChange = (e) => {
@@ -172,12 +192,12 @@ const Events = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (selectedEvent) {
+      if (selectedEvent && !isCopyMode) {
         await eventService.updateEvent(selectedEvent.uuid, formData);
         toast.success('Kegiatan berhasil diperbarui');
       } else {
         await eventService.createEvent(formData);
-        toast.success('Kegiatan berhasil dibuat');
+        toast.success(isCopyMode ? 'Kegiatan berhasil disalin' : 'Kegiatan berhasil dibuat');
       }
       handleCloseDialog();
       fetchEvents();
@@ -424,6 +444,21 @@ const Events = () => {
                             <Edit />
                           </IconButton>
                         </Tooltip>
+                        <Tooltip title="Salin Kegiatan">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenCopyDialog(event)}
+                            sx={{
+                              ml: 0.75,
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              bgcolor: 'rgba(2, 6, 23, 0.02)',
+                              '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.04)' }
+                            }}
+                          >
+                            <ContentCopy fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Hapus Kegiatan">
                           <IconButton
                             size="small"
@@ -584,7 +619,7 @@ const Events = () => {
         >
           <DialogTitle sx={{ pb: 2 }}>
             <Typography variant="h5" component="div" sx={{ fontWeight: 'bold' }}>
-              {selectedEvent ? 'Edit Kegiatan' : 'Buat Kegiatan Baru'}
+              {selectedEvent ? 'Edit Kegiatan' : (isCopyMode ? 'Salin Kegiatan' : 'Buat Kegiatan Baru')}
             </Typography>
           </DialogTitle>
           <form onSubmit={handleSubmit}>
@@ -696,7 +731,7 @@ const Events = () => {
                 variant="contained"
                 sx={{ borderRadius: 2, px: 3 }}
               >
-                {selectedEvent ? 'Perbarui' : 'Buat'}
+                {selectedEvent ? 'Perbarui' : (isCopyMode ? 'Buat Salinan' : 'Buat')}
               </Button>
             </DialogActions>
           </form>

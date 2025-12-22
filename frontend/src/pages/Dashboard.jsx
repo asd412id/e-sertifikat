@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useState as useStateReact } from 'react';
 import {
   Grid,
   Card,
@@ -13,6 +13,7 @@ import {
   Chip,
   Divider,
   CircularProgress,
+  Tooltip,
 } from '@mui/material';
 import {
   Event,
@@ -39,6 +40,44 @@ const Dashboard = () => {
   const [recentEvents, setRecentEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  const TruncatedTooltip = ({ title, children }) => {
+    const ref = useRef(null);
+    const [isTruncated, setIsTruncated] = useStateReact(false);
+
+    const evaluate = () => {
+      const el = ref.current;
+      if (!el) return;
+      const next = el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight;
+      setIsTruncated(next);
+    };
+
+    useLayoutEffect(() => {
+      evaluate();
+    }, [title, children]);
+
+    useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+
+      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => evaluate()) : null;
+      if (ro) ro.observe(el);
+
+      window.addEventListener('resize', evaluate);
+      return () => {
+        window.removeEventListener('resize', evaluate);
+        if (ro) ro.disconnect();
+      };
+    }, [title, children]);
+
+    return (
+      <Tooltip title={isTruncated ? title : ''} disableHoverListener={!isTruncated}>
+        <Box ref={ref} sx={{ minWidth: 0 }}>
+          {children}
+        </Box>
+      </Tooltip>
+    );
+  };
 
   useEffect(() => {
     document.title = 'Dashboard - e-Sertifikat';
@@ -290,6 +329,9 @@ const Dashboard = () => {
                       borderRadius: 2,
                       transition: 'all 0.3s ease',
                       cursor: 'pointer',
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
                       '&:hover': {
                         transform: 'translateY(-2px)',
                         boxShadow: 2,
@@ -305,13 +347,46 @@ const Dashboard = () => {
                       }
                     }}
                   >
-                    <CardContent sx={{ p: 3 }}>
+                    <CardContent sx={{ p: 3, flex: 1 }}>
                       <Stack spacing={2}>
                         <Box>
-                          <Typography variant="h6" component="div" sx={{ fontWeight: 600, mb: 1 }}>
-                            {event.title}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          <TruncatedTooltip title={event.title || ''}>
+                            <Typography
+                              variant="h6"
+                              component="div"
+                              sx={{
+                                fontWeight: 700,
+                                mb: 0.75,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                lineHeight: 1.25,
+                                minHeight: '2.5em'
+                              }}
+                            >
+                              {event.title}
+                            </Typography>
+                          </TruncatedTooltip>
+
+                          <TruncatedTooltip title={event.description || ''}>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{
+                                mb: 1.25,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                minHeight: event.description ? '2.5em' : 0
+                              }}
+                            >
+                              {event.description || ''}
+                            </Typography>
+                          </TruncatedTooltip>
+
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                             {format(new Date(event.startDate), 'dd MMMM yyyy', { locale: id })} - {format(new Date(event.endDate), 'dd MMMM yyyy', { locale: id })}
                           </Typography>
                         </Box>
