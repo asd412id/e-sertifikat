@@ -22,8 +22,12 @@ import {
   Event as EventIcon,
   ContentCopy,
   OpenInNew,
-  Search
+  Search,
+  CalendarMonth,
+  LocationOn
 } from '@mui/icons-material';
+import { format } from 'date-fns';
+import { id } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -101,6 +105,21 @@ const DownloadHub = () => {
     const slug = event?.publicDownloadSlug;
     if (!slug) return '';
     return `${window.location.origin}/download/${slug}`;
+  };
+
+  const formatDateRange = (event) => {
+    try {
+      const s = event?.startDate ? new Date(event.startDate) : null;
+      const e = event?.endDate ? new Date(event.endDate) : null;
+      if (!s && !e) return '';
+      if (s && !e) return format(s, 'dd MMM yyyy', { locale: id });
+      if (!s && e) return format(e, 'dd MMM yyyy', { locale: id });
+      const sTxt = format(s, 'dd MMM yyyy', { locale: id });
+      const eTxt = format(e, 'dd MMM yyyy', { locale: id });
+      return sTxt === eTxt ? sTxt : `${sTxt} – ${eTxt}`;
+    } catch {
+      return '';
+    }
   };
 
   const handleCopyLink = async (event) => {
@@ -262,6 +281,39 @@ const DownloadHub = () => {
                                     </Typography>
                                   </Tooltip>
                                 ) : null}
+
+                                {(formatDateRange(event) || event.location) && (
+                                  <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap" sx={{ mt: 0.75 }}>
+                                    {formatDateRange(event) && (
+                                      <Box display="flex" alignItems="center" sx={{ color: 'text.secondary' }}>
+                                        <CalendarMonth sx={{ fontSize: 16, mr: 0.75 }} />
+                                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                                          {formatDateRange(event)}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    {event.location && (
+                                      <Box display="flex" alignItems="center" sx={{ color: 'text.secondary' }}>
+                                        <LocationOn sx={{ fontSize: 16, mr: 0.75 }} />
+                                        <Tooltip title={event.location || ''} placement="top" arrow>
+                                          <Typography
+                                            variant="caption"
+                                            sx={{
+                                              fontWeight: 700,
+                                              display: '-webkit-box',
+                                              WebkitLineClamp: 1,
+                                              WebkitBoxOrient: 'vertical',
+                                              overflow: 'hidden',
+                                              maxWidth: { xs: '100%', sm: 320 }
+                                            }}
+                                          >
+                                            {event.location}
+                                          </Typography>
+                                        </Tooltip>
+                                      </Box>
+                                    )}
+                                  </Stack>
+                                )}
                               </Box>
                             </Box>
 
