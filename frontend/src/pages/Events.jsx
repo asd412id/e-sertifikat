@@ -60,6 +60,8 @@ import toast from 'react-hot-toast';
 const Events = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const didInitSearchEffect = useRef(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -207,6 +209,7 @@ const Events = () => {
   };
 
   const handleCloseDialog = () => {
+    if (submitting) return;
     setOpenDialog(false);
     setSelectedEvent(null);
     setIsCopyMode(false);
@@ -222,6 +225,7 @@ const Events = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      setSubmitting(true);
       if (selectedEvent && !isCopyMode) {
         await eventService.updateEvent(selectedEvent.uuid, formData);
         toast.success('Kegiatan berhasil diperbarui');
@@ -239,17 +243,23 @@ const Events = () => {
       fetchEvents();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Operasi gagal');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (eventId) => {
+    if (deletingId) return;
     if (window.confirm('Apakah Anda yakin ingin menghapus kegiatan ini?')) {
       try {
+        setDeletingId(eventId);
         await eventService.deleteEvent(eventId);
         toast.success('Kegiatan berhasil dihapus');
         fetchEvents();
       } catch (error) {
         toast.error('Gagal menghapus kegiatan');
+      } finally {
+        setDeletingId(null);
       }
     }
   };
@@ -519,6 +529,7 @@ const Events = () => {
                             size="small"
                             color="error"
                             onClick={() => handleDelete(event.uuid)}
+                            disabled={!!deletingId}
                             sx={{
                               ml: 0.75,
                               border: '1px solid',
@@ -527,7 +538,7 @@ const Events = () => {
                               '&:hover': { bgcolor: 'rgba(239, 68, 68, 0.08)' }
                             }}
                           >
-                            <Delete />
+                            {deletingId === event.uuid ? <CircularProgress size={18} color="inherit" /> : <Delete />}
                           </IconButton>
                         </Tooltip>
                       </Box>
@@ -780,15 +791,19 @@ const Events = () => {
               </Grid>
             </DialogContent>
             <DialogActions sx={{ px: 3, py: 2 }}>
-              <Button onClick={handleCloseDialog} sx={{ borderRadius: 2 }}>
+              <Button onClick={handleCloseDialog} disabled={submitting} sx={{ borderRadius: 2 }}>
                 Batal
               </Button>
               <Button
                 type="submit"
                 variant="contained"
+                disabled={submitting}
+                startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : null}
                 sx={{ borderRadius: 2, px: 3 }}
               >
-                {selectedEvent ? 'Perbarui' : (isCopyMode ? 'Buat Salinan' : 'Buat')}
+                {submitting
+                  ? 'Menyimpan...'
+                  : (selectedEvent && !isCopyMode ? 'Perbarui' : (isCopyMode ? 'Salin' : 'Simpan'))}
               </Button>
             </DialogActions>
           </form>

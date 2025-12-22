@@ -30,7 +30,8 @@ import {
   Fab,
   Menu,
   Pagination,
-  Stack
+  Stack,
+  Divider
 } from '@mui/material';
 import {
   Add,
@@ -59,6 +60,8 @@ const Participants = () => {
   const [participants, setParticipants] = useState([]);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const didInitSearchEffect = useRef(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -169,6 +172,7 @@ const Participants = () => {
   };
 
   const handleCloseDialog = () => {
+    if (submitting) return;
     setOpenDialog(false);
     setSelectedParticipant(null);
     setFormData({});
@@ -184,6 +188,7 @@ const Participants = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      setSubmitting(true);
       if (selectedParticipant) {
         await participantService.updateParticipant(selectedParticipant.uuid, formData);
         toast.success('Data peserta berhasil diperbarui');
@@ -195,17 +200,23 @@ const Participants = () => {
       fetchParticipants();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Operasi gagal');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (participantId) => {
+    if (deletingId) return;
     if (window.confirm('Apakah Anda yakin ingin menghapus peserta ini?')) {
       try {
+        setDeletingId(participantId);
         await participantService.deleteParticipant(participantId);
         toast.success('Peserta berhasil dihapus');
         fetchParticipants();
       } catch (error) {
         toast.error('Gagal menghapus peserta');
+      } finally {
+        setDeletingId(null);
       }
     }
   };
@@ -699,8 +710,9 @@ const Participants = () => {
                                 size="small"
                                 color="error"
                                 onClick={() => handleDelete(participant.uuid)}
+                                disabled={!!deletingId}
                               >
-                                <Delete />
+                                {deletingId === participant.uuid ? <CircularProgress size={18} color="inherit" /> : <Delete fontSize="small" />}
                               </IconButton>
                             </Tooltip>
                           </TableCell>
@@ -755,9 +767,14 @@ const Participants = () => {
               </Grid>
             </DialogContent>
             <DialogActions>
-              <Button onClick={handleCloseDialog}>Batal</Button>
-              <Button type="submit" variant="contained">
-                {selectedParticipant ? 'Perbarui' : 'Tambah'}
+              <Button onClick={handleCloseDialog} disabled={submitting}>Batal</Button>
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={submitting}
+                startIcon={submitting ? <CircularProgress size={18} color="inherit" /> : null}
+              >
+                {submitting ? 'Menyimpan...' : (selectedParticipant ? 'Perbarui' : 'Tambah')}
               </Button>
             </DialogActions>
           </form>
