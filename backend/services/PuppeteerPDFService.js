@@ -4,6 +4,7 @@ const fsSync = require('fs');
 const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 const { PDFDocument } = require('pdf-lib');
 // Removed unused locale import
 
@@ -15,6 +16,38 @@ class PuppeteerPDFService {
     this._jobQueue = [];
     this._fontsCssInFlight = new Map();
     this._assetBufferCache = new Map();
+  }
+
+  _getVerifySecret() {
+    const s = String(process.env.CERT_VERIFY_SECRET || '').trim();
+    if (!s) return null;
+    return s;
+  }
+
+  _getVerifyBaseUrl() {
+    const base = String(process.env.CERT_VERIFY_BASE_URL || '').trim();
+    if (!base) return null;
+    return base.replace(/\/$/, '');
+  }
+
+  _signVerifyPayload(payload) {
+    const secret = this._getVerifySecret();
+    if (!secret) return null;
+    const body = JSON.stringify(payload);
+    return crypto.createHmac('sha256', secret).update(body).digest('hex');
+  }
+
+  _buildVerifyUrl({ templateUuid, participantUuid }) {
+    const base = this._getVerifyBaseUrl();
+    const sig = this._signVerifyPayload({ templateUuid, participantUuid });
+    if (!base || !sig || !templateUuid || !participantUuid) return null;
+
+    const params = new URLSearchParams({
+      template: String(templateUuid),
+      participant: String(participantUuid),
+      sig
+    });
+    return `${base}/api/certificates/verify?${params.toString()}`;
   }
 
   async _applyPdfMetadata(pdfBuffer, template, participants) {
@@ -301,7 +334,7 @@ class PuppeteerPDFService {
 
       // Create HTML content for all certificates
       const tHtmlStart = Date.now();
-      const htmlContent = this.generateHTMLFromTemplate(template, list, localFontsCSS);
+      const htmlContent = await this.generateHTMLFromTemplate(template, list, localFontsCSS);
       const tHtmlEnd = Date.now();
       console.log(`generateHTMLFromTemplate took ${tHtmlEnd - tHtmlStart}ms`);
 
@@ -421,7 +454,7 @@ class PuppeteerPDFService {
    * @param {string} localFontsCSS
    * @returns {string} HTML string
    */
-  generateHTMLFromTemplate(template, participants, localFontsCSS = '') {
+  async generateHTMLFromTemplate(template, participants, localFontsCSS = '') {
     // Collect all unique font families used in the template
     const fontFamilies = new Set();
     const designPages = (template.design && Array.isArray(template.design.pages) && template.design.pages.length)
@@ -579,7 +612,7 @@ class PuppeteerPDFService {
     };
 
     // Generate a page for each participant
-    participants.forEach((participant, index) => {
+    for (const participant of participants) {
       for (const pageDef of designPages) {
         const bgUrl = resolveBackgroundUrl(pageDef?.background);
         const bgStyle = bgUrl
@@ -870,13 +903,71 @@ class PuppeteerPDFService {
             }
 
             html += `<img src="${imgUrl}" style="${styles.join('; ')}" />`;
+          } else if (element.type === 'qrcode') {
+            const styles = [];
+            styles.push('position: absolute');
+            const baseX = element.x || 0;
+            const baseY = element.y || 0;
+            let w = element.width || 120;
+            let h = element.height || 120;
+            if (w > template.width) w = template.width;
+            if (h > template.height) h = template.height;
+            styles.push(`left: ${baseX}px`);
+            styles.push(`top: ${baseY}px`);
+            styles.push(`width: ${w}px`);
+            styles.push(`height: ${h}px`);
+            if (typeof element.opacity === 'number') styles.push(`opacity: ${element.opacity}`);
+            if (typeof element.rotation === 'number' && element.rotation !== 0) {
+              styles.push(`transform: rotate(${element.rotation}deg)`);
+              styles.push('transform-origin: top left');
+            }
+            if (element.borderColor && (element.borderWidth || 0) > 0) {
+              styles.push(`border: ${Math.max(0, element.borderWidth)}px solid ${element.borderColor}`);
+            }
+            if (typeof element.borderRadius === 'number' && element.borderRadius > 0) {
+              styles.push(`border-radius: ${Math.max(0, element.borderRadius)}px`);
+            }
+            if (element.shadowColor || element.shadowBlur || element.shadowOffsetX || element.shadowOffsetY) {
+              const sx = element.shadowOffsetX || 0;
+              const sy = element.shadowOffsetY || 0;
+              const blur = element.shadowBlur || 0;
+              const col = element.shadowColor || 'rgba(0,0,0,0.35)';
+              styles.push(`box-shadow: ${sx}px ${sy}px ${blur}px ${col}`);
+            }
+
+            const verifyUrl = this._buildVerifyUrl({
+              templateUuid: template?.uuid,
+              participantUuid: participant?.uuid
+            });
+
+            const bgTransparent = Boolean(element.transparentBackground);
+            const bgColor = (typeof element.backgroundColor === 'string' && element.backgroundColor.trim())
+              ? element.backgroundColor.trim()
+              : '#ffffff';
+
+            // If not configured, render a blank placeholder box so PDF generation does not fail.
+            if (!verifyUrl) {
+              const placeholderBg = bgTransparent ? 'transparent' : bgColor;
+              html += `<div style="${styles.join('; ')}; background: ${placeholderBg}; display:flex; align-items:center; justify-content:center; color:#111827; font-size:12px; font-family:Arial;"><span>QR</span></div>`;
+            } else {
+              const dataUrl = await QRCode.toDataURL(verifyUrl, {
+                errorCorrectionLevel: 'M',
+                margin: 0,
+                width: Math.round(Math.max(w, h)),
+                color: {
+                  dark: '#000000',
+                  light: bgTransparent ? '#00000000' : bgColor
+                }
+              });
+              html += `<img src="${dataUrl}" style="${styles.join('; ')}" />`;
+            }
           }
         }
 
         html += `</div>`;
         html += `</div>`;
       }
-    });
+    }
 
     html += `
       </body>

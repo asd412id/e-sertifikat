@@ -42,6 +42,7 @@ import {
   Edit,
   Delete,
   Image,
+  QrCode2,
   TextFields,
   Save,
   ArrowBack,
@@ -998,6 +999,12 @@ const Certificates = () => {
     return { x: adjustedX, y: adjustedY };
   };
 
+  const getPastePosition = (p = null) => {
+    const x = (p && Number.isFinite(p.x)) ? p.x : Math.round(stageSize.width / 2);
+    const y = (p && Number.isFinite(p.y)) ? p.y : Math.round(stageSize.height / 2);
+    return { x, y };
+  };
+
   const handleAddText = () => {
     const newText = {
       id: Date.now().toString(),
@@ -1022,11 +1029,25 @@ const Certificates = () => {
     setElements([...elements, newText]);
   };
 
-  const getPastePosition = () => {
-    const p = lastPointerPosRef.current;
-    const x = (p && Number.isFinite(p.x)) ? p.x : Math.round(stageSize.width / 2);
-    const y = (p && Number.isFinite(p.y)) ? p.y : Math.round(stageSize.height / 2);
-    return { x, y };
+  const handleAddQrCode = () => {
+    const pos = getPastePosition();
+    const id = Date.now().toString();
+    const newQr = {
+      id,
+      type: 'qrcode',
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
+      width: 120,
+      height: 120,
+      opacity: 1,
+      rotation: 0,
+      draggable: true,
+      backgroundColor: '#ffffff',
+      transparentBackground: false
+    };
+    setElements((prev) => [...prev, newQr]);
+    setSelectedElement(newQr);
+    setSelectedElementIds([id]);
   };
 
   const addTextFromClipboard = (text) => {
@@ -2451,7 +2472,7 @@ const Certificates = () => {
                     Tambah Elemen
                   </Typography>
 
-                  <Stack spacing={2} sx={{ mb: 3 }}>
+                  <Stack direction="column" spacing={2}>
                     <Button
                       fullWidth
                       variant="outlined"
@@ -2464,6 +2485,20 @@ const Certificates = () => {
                       }}
                     >
                       Tambah Teks
+                    </Button>
+
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<QrCode2 />}
+                      onClick={handleAddQrCode}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      QR Code Verifikator
                     </Button>
 
                     <Button
@@ -2534,7 +2569,7 @@ const Certificates = () => {
 
                 <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                    Properti {selectedElement?.type === 'image' ? 'Gambar' : 'Teks'}
+                    Properti {selectedElement?.type === 'image' ? 'Gambar' : selectedElement?.type === 'qrcode' ? 'QR Code' : 'Teks'}
                   </Typography>
 
                   {selectedElement?.type === 'text' && (
@@ -3175,6 +3210,238 @@ const Certificates = () => {
                           />
                         </Box>
                       </Box>
+
+                      <Button size="small" variant="text" color="secondary" onClick={() => handleUpdateElement(selectedElement.id, { shadowColor: undefined, shadowBlur: undefined, shadowOffsetX: undefined, shadowOffsetY: undefined, shadowOpacity: undefined })}>
+                        Reset Shadow Gambar
+                      </Button>
+                    </Stack>
+                  )}
+
+                  {selectedElement?.type === 'qrcode' && (
+                    <Stack spacing={3}>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Posisi X"
+                          type="number"
+                          value={Math.round(selectedElement.x || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { x: Number(e.target.value) })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Posisi Y"
+                          type="number"
+                          value={Math.round(selectedElement.y || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { y: Number(e.target.value) })}
+                          fullWidth
+                        />
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Lebar (px)"
+                          type="number"
+                          value={Math.round(selectedElement.width || 120)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { width: Math.max(5, Number(e.target.value)) })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Tinggi (px)"
+                          type="number"
+                          value={Math.round(selectedElement.height || 120)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { height: Math.max(5, Number(e.target.value)) })}
+                          fullWidth
+                        />
+                      </Box>
+
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Rotasi: {Math.round(selectedElement.rotation || 0)}°
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          <Slider
+                            value={selectedElement.rotation || 0}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { rotation: Number(value) })}
+                            min={-180}
+                            max={180}
+                            step={1}
+                            valueLabelDisplay="auto"
+                          />
+                          <TextField
+                            type="number"
+                            value={Math.round(selectedElement.rotation || 0)}
+                            inputProps={{ min: -180, max: 180, step: 1 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, -180, 180, 1);
+                              handleUpdateElement(selectedElement.id, { rotation: Math.round(next) });
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                        <Button size="small" variant="text" onClick={() => handleUpdateElement(selectedElement.id, { rotation: 0 })}>
+                          Reset Rotasi
+                        </Button>
+                      </Box>
+
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity: {typeof selectedElement.opacity === 'number' ? selectedElement.opacity.toFixed(2) : 1}
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          <Slider
+                            value={typeof selectedElement.opacity === 'number' ? selectedElement.opacity : 1}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { opacity: Number(value) })}
+                            min={0.1}
+                            max={1}
+                            step={0.01}
+                            valueLabelDisplay="auto"
+                          />
+                          <TextField
+                            type="number"
+                            value={typeof selectedElement.opacity === 'number' ? Number(selectedElement.opacity.toFixed(2)) : 1}
+                            inputProps={{ min: 0.1, max: 1, step: 0.01 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, 0.1, 1, 0.01);
+                              handleUpdateElement(selectedElement.id, { opacity: next });
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                        <Button size="small" variant="text" onClick={() => handleUpdateElement(selectedElement.id, { opacity: 1 })}>
+                          Reset Opacity
+                        </Button>
+                      </Box>
+
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Background
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, alignItems: 'center' }}>
+                        <TextField
+                          label="Warna Background"
+                          type="color"
+                          value={selectedElement.backgroundColor || '#ffffff'}
+                          disabled={Boolean(selectedElement.transparentBackground)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('qrcodeBackgroundColor', () => handleUpdateElement(selectedElement.id, { backgroundColor: val }), 60);
+                          }}
+                        />
+                        <FormControlLabel
+                          control={(
+                            <Switch
+                              checked={Boolean(selectedElement.transparentBackground)}
+                              onChange={(e) => handleUpdateElement(selectedElement.id, { transparentBackground: e.target.checked })}
+                            />
+                          )}
+                          label="Transparan"
+                        />
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="secondary"
+                        onClick={() => handleUpdateElement(selectedElement.id, { backgroundColor: undefined, transparentBackground: false })}
+                      >
+                        Reset Background
+                      </Button>
+
+                      {/* QR Code border & shadow */}
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Border & Shadow
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna Border"
+                          type="color"
+                          value={selectedElement.borderColor || '#000000'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('qrcodeBorderColor', () => handleUpdateElement(selectedElement.id, { borderColor: val }), 60);
+                          }}
+                        />
+                        <TextField
+                          label="Lebar Border (px)"
+                          type="number"
+                          value={Math.round(selectedElement.borderWidth || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { borderWidth: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+                      <TextField
+                        label="Radius (px)"
+                        type="number"
+                        value={Math.round(selectedElement.borderRadius || 0)}
+                        onChange={(e) => handleUpdateElement(selectedElement.id, { borderRadius: Math.max(0, Number(e.target.value)) })}
+                        fullWidth
+                      />
+                      <Button size="small" variant="text" color="secondary" onClick={() => handleUpdateElement(selectedElement.id, { borderColor: undefined, borderWidth: undefined, borderRadius: undefined })}>
+                        Reset Border
+                      </Button>
+
+                      <Typography sx={{ fontWeight: 'bold' }}>Shadow QR Code</Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna"
+                          type="color"
+                          value={selectedElement.shadowColor || '#000000'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('qrcodeShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: val }), 60);
+                          }}
+                        />
+                        <TextField
+                          label="Blur"
+                          type="number"
+                          value={Math.round(selectedElement.shadowBlur || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowBlur: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Offset X"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetX || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetX: Number(e.target.value) })}
+                        />
+                        <TextField
+                          label="Offset Y"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetY || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetY: Number(e.target.value) })}
+                        />
+                      </Box>
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity Shadow: {typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity.toFixed(2) : 1}
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          <Slider
+                            value={typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity : 1}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { shadowOpacity: Number(value) })}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            valueLabelDisplay="auto"
+                          />
+                          <TextField
+                            type="number"
+                            value={typeof selectedElement.shadowOpacity === 'number' ? Number(selectedElement.shadowOpacity.toFixed(2)) : 1}
+                            inputProps={{ min: 0, max: 1, step: 0.01 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, 0, 1, 0.01);
+                              handleUpdateElement(selectedElement.id, { shadowOpacity: next });
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                      </Box>
+
+                      <Button size="small" variant="text" color="secondary" onClick={() => handleUpdateElement(selectedElement.id, { shadowColor: undefined, shadowBlur: undefined, shadowOffsetX: undefined, shadowOffsetY: undefined, shadowOpacity: undefined })}>
+                        Reset Shadow QR Code
+                      </Button>
                     </Stack>
                   )}
 
@@ -3409,6 +3676,65 @@ const Certificates = () => {
                                 }}
                               />
                               {/* Removed text bounding box rectangle as requested */}
+                            </>
+                          ) : element.type === 'qrcode' ? (
+                            <>
+                              <Group
+                                x={element.x || 0}
+                                y={element.y || 0}
+                                rotation={element.rotation || 0}
+                                ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
+                                draggable={element.draggable}
+                                onClick={(e) => handleSelectElement(element, e)}
+                                onDragEnd={(e) => {
+                                  handleUpdateElement(element.id, { x: e.target.x(), y: e.target.y() });
+                                }}
+                                onTransformEnd={(e) => {
+                                  const node = e.target;
+                                  const scaleX = node.scaleX();
+                                  const scaleY = node.scaleY();
+                                  const newWidth = Math.max(5, (element.width || 120) * scaleX);
+                                  const newHeight = Math.max(5, (element.height || 120) * scaleY);
+                                  handleUpdateElement(element.id, {
+                                    x: node.x(),
+                                    y: node.y(),
+                                    width: newWidth,
+                                    height: newHeight,
+                                    rotation: node.rotation()
+                                  });
+                                  node.scaleX(1);
+                                  node.scaleY(1);
+                                }}
+                                shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
+                                shadowBlur={element.shadowBlur || 0}
+                                shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
+                                shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
+                              >
+                                <Rect
+                                  x={0}
+                                  y={0}
+                                  width={element.width || 120}
+                                  height={element.height || 120}
+                                  fill={element.transparentBackground ? 'rgba(0,0,0,0)' : (element.backgroundColor || '#ffffff')}
+                                  stroke={element.borderColor || '#111827'}
+                                  strokeWidth={Math.max(0, element.borderWidth || 0)}
+                                  cornerRadius={element.borderRadius || 0}
+                                  opacity={typeof element.opacity === 'number' ? element.opacity : 1}
+                                />
+                                <Text
+                                  x={0}
+                                  y={0}
+                                  width={element.width || 120}
+                                  height={element.height || 120}
+                                  text="QR"
+                                  fontSize={Math.max(10, Math.round(Math.min(element.width || 120, element.height || 120) / 4))}
+                                  fontFamily="Arial"
+                                  fill="#111827"
+                                  align="center"
+                                  verticalAlign="middle"
+                                  listening={false}
+                                />
+                              </Group>
                             </>
                           ) : (
                             <>

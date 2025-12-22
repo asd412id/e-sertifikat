@@ -1,12 +1,211 @@
 const CertificateService = require('../services/CertificateService');
-const { Event, Participant } = require('../models');
+const { Event, Participant, CertificateTemplate } = require('../models');
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const archiver = require('archiver');
 const { Op, where, literal } = require('sequelize');
+const crypto = require('crypto');
 
 class CertificateController {
+
+  async verifyCertificate(request, reply) {
+    try {
+      const { template, participant, sig } = request.query || {};
+      const format = String((request.query || {}).format || '').toLowerCase();
+
+      const wantsJson = format === 'json'
+        || (request.headers && String(request.headers.accept || '').includes('application/json'));
+
+      const escapeHtml = (s) => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const sendHtml = (statusCode, payload) => {
+        const valid = !!payload?.data?.valid;
+        const reason = payload?.data?.reason || payload?.error || '';
+        const eventTitle = payload?.data?.event?.title || '';
+        const templateUuid = payload?.data?.templateUuid || '';
+        const participantUuid = payload?.data?.participantUuid || '';
+        const rows = Array.isArray(payload?.data?.fields) ? payload.data.fields : [];
+
+        const badgeBg = valid ? '#16a34a' : '#dc2626';
+        const badgeText = valid ? 'VALID' : 'TIDAK VALID';
+
+        const listHtml = rows.length
+          ? rows.map((r) => {
+            const label = escapeHtml(r?.label || r?.name || '');
+            const value = escapeHtml(r?.value == null ? '' : String(r.value));
+            return `<div class="row"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+          }).join('')
+          : '<div class="muted">Data pemilik tidak tersedia.</div>';
+
+        const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Verifikasi Sertifikat</title>
+  <style>
+    :root { --bg:#0b1220; --card:#111827; --muted:#9ca3af; --text:#e5e7eb; }
+    * { box-sizing: border-box; }
+    body {
+      margin:0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(900px 520px at 12% 8%, rgba(59,130,246,0.20) 0%, rgba(11,18,32,0) 62%),
+        radial-gradient(780px 520px at 92% 0%, rgba(16,185,129,0.16) 0%, rgba(11,18,32,0) 58%),
+        linear-gradient(180deg, #0b1220 0%, #070b14 100%);
+      background-repeat: no-repeat;
+      color: var(--text);
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 28px 16px 48px; }
+    .card { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; overflow: hidden; }
+    .header { padding: 18px 18px 14px; display:flex; gap: 12px; align-items:center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .title { font-size: 18px; font-weight: 800; margin:0; }
+    .badge { background: ${badgeBg}; color: #fff; font-weight: 800; padding: 8px 12px; border-radius: 999px; font-size: 12px; letter-spacing: 0.06em; }
+    .body { padding: 16px 18px 18px; }
+    .meta { display:grid; grid-template-columns: 1fr; gap: 6px; margin-bottom: 14px; }
+    .muted { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .reason { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(220,38,38,0.12); border: 1px solid rgba(220,38,38,0.3); }
+    .grid { display:grid; grid-template-columns: 1fr; gap: 10px; }
+    .row { display:grid; grid-template-columns: 160px 1fr; gap: 10px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; }
+    .label { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+    .value { font-size: 14px; font-weight: 650; word-break: break-word; }
+    .footer { margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    @media (max-width: 520px) {
+      .wrap { padding: 16px 12px 28px; }
+      .header { flex-direction: column; align-items: flex-start; }
+      .badge { align-self: flex-start; }
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <div>
+          <h1 class="title">Verifikasi Sertifikat</h1>
+          <div class="muted">Data yang ditampilkan di sini adalah identitas resmi dari sistem.</div>
+        </div>
+        <div class="badge">${badgeText}</div>
+      </div>
+      <div class="body">
+        <div class="meta">
+          ${eventTitle ? `<div class="muted"><b>Kegiatan:</b> ${escapeHtml(eventTitle)}</div>` : ''}
+          ${templateUuid ? `<div class="muted"><b>Template:</b> ${escapeHtml(templateUuid)}</div>` : ''}
+          ${participantUuid ? `<div class="muted"><b>Peserta:</b> ${escapeHtml(participantUuid)}</div>` : ''}
+        </div>
+
+        ${!valid && reason ? `<div class="reason"><b>Alasan:</b> ${escapeHtml(reason)}</div>` : ''}
+
+        <div class="grid" style="margin-top: 14px;">
+          ${listHtml}
+        </div>
+
+        <div class="footer">
+          Perlu diingat bahwa jika data pada file PDF telah diubah, maka informasi tersebut mungkin berbeda dengan hasil verifikasi ini.
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+        reply.header('Content-Type', 'text/html; charset=utf-8');
+        return reply.status(statusCode).send(html);
+      };
+
+      if (!template || !participant || !sig) {
+        const payload = {
+          success: false,
+          error: 'Missing required query parameters'
+        };
+        return wantsJson
+          ? reply.status(400).send(payload)
+          : sendHtml(400, payload);
+      }
+
+      const secret = String(process.env.CERT_VERIFY_SECRET || '').trim();
+      if (!secret) {
+        const payload = {
+          success: false,
+          error: 'Verification is not configured'
+        };
+        return wantsJson
+          ? reply.status(500).send(payload)
+          : sendHtml(500, payload);
+      }
+
+      const payload = { templateUuid: String(template), participantUuid: String(participant) };
+      const expectedSig = crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+      if (String(sig) !== expectedSig) {
+        const out = { success: true, data: { valid: false, reason: 'Invalid signature' } };
+        return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+      }
+
+      // Fetch by uuid without user filter (public verification)
+      const templateRecord = await CertificateTemplate.findOne({ where: { uuid: String(template), isActive: true } });
+      if (!templateRecord) {
+        const out = { success: true, data: { valid: false, reason: 'Template not found' } };
+        return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+      }
+
+      const participantFinal = await Participant.findOne({ where: { uuid: String(participant) } });
+      if (!participantFinal) {
+        const out = { success: true, data: { valid: false, reason: 'Participant not found' } };
+        return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+      }
+
+      if (participantFinal.eventId !== templateRecord.eventId) {
+        const out = { success: true, data: { valid: false, reason: 'Participant does not match template event' } };
+        return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+      }
+
+      const event = await Event.findByPk(templateRecord.eventId).catch(() => null);
+      const configuredFields = Array.isArray(event?.participantFields) ? event.participantFields : [];
+      const participantData = (participantFinal.data && typeof participantFinal.data === 'object') ? participantFinal.data : {};
+
+      const fields = configuredFields
+        .map((f) => {
+          const name = String(f?.name || '').trim();
+          if (!name) return null;
+          const raw = participantData?.[name];
+          const value = raw == null ? '' : String(raw);
+          if (!value) return null;
+          return { name, label: f?.label || name, value };
+        })
+        .filter(Boolean);
+
+      const out = {
+        success: true,
+        data: {
+          valid: true,
+          templateUuid: templateRecord.uuid,
+          participantUuid: participantFinal.uuid,
+          event: event ? { title: event.title } : null,
+          fields
+        }
+      };
+      return wantsJson ? reply.send(out) : sendHtml(200, out);
+    } catch (error) {
+      const payload = { success: false, error: error.message };
+      const wantsJson = String(((request.query || {}).format || '')).toLowerCase() === 'json'
+        || (request.headers && String(request.headers.accept || '').includes('application/json'));
+      if (wantsJson) {
+        reply.status(500).send(payload);
+      } else {
+        reply.header('Content-Type', 'text/html; charset=utf-8');
+        reply.status(500).send(`<!DOCTYPE html><html><body><pre>${escapeHtml(error.message)}</pre></body></html>`);
+      }
+    }
+  }
 
   async getPublicDownloadEvents(request, reply) {
     try {

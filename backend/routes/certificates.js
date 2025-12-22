@@ -2,6 +2,9 @@ const CertificateController = require('../controllers/CertificateController');
 const { authenticateToken } = require('../middleware/auth');
 
 async function certificateRoutes(fastify, options) {
+  // Public certificate verification (QR) endpoint (no auth)
+  fastify.get('/verify', CertificateController.verifyCertificate);
+
   // Public portal endpoints (no auth)
   fastify.get('/public/events', CertificateController.getPublicDownloadEvents);
   fastify.get('/public/:slug', CertificateController.getPublicDownloadPortalInfo);
