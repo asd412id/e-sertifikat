@@ -165,8 +165,17 @@ const Events = () => {
     if (!event) return;
     setSelectedEvent(null);
     setIsCopyMode(true);
+
+    const baseTitle = String(event.title || '').trim();
+    const suffix = ' (Copy)';
+    const maxLen = 200;
+    const trimmedBase = baseTitle.length > (maxLen - suffix.length)
+      ? baseTitle.slice(0, maxLen - suffix.length).trim()
+      : baseTitle;
+    const nextTitle = (trimmedBase || 'Kegiatan') + suffix;
+
     setFormData({
-      title: event.title,
+      title: nextTitle,
       description: event.description || '',
       startDate: format(new Date(event.startDate), 'yyyy-MM-dd'),
       endDate: format(new Date(event.endDate), 'yyyy-MM-dd'),
@@ -196,7 +205,13 @@ const Events = () => {
         await eventService.updateEvent(selectedEvent.uuid, formData);
         toast.success('Kegiatan berhasil diperbarui');
       } else {
-        await eventService.createEvent(formData);
+        const payload = { ...formData };
+        payload.title = String(payload.title || '').trim();
+        if (payload.title.length > 200) payload.title = payload.title.slice(0, 200).trim();
+        if (payload.title.length < 3) {
+          throw new Error('Judul kegiatan minimal 3 karakter');
+        }
+        await eventService.createEvent(payload);
         toast.success(isCopyMode ? 'Kegiatan berhasil disalin' : 'Kegiatan berhasil dibuat');
       }
       handleCloseDialog();

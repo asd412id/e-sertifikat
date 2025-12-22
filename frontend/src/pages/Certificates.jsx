@@ -95,6 +95,21 @@ const Certificates = () => {
   };
 
   const getElementBox = (el) => {
+    if (el?.id && shapeRefs?.current?.[el.id] && typeof shapeRefs.current[el.id].getClientRect === 'function') {
+      try {
+        const rect = shapeRefs.current[el.id].getClientRect({ skipShadow: true, skipStroke: true });
+        const x = Number(rect?.x);
+        const y = Number(rect?.y);
+        const w = Number(rect?.width);
+        const h = Number(rect?.height);
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(w) && Number.isFinite(h)) {
+          return { x, y, w, h };
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+
     const x = Number(el?.x || 0);
     const y = Number(el?.y || 0);
     const w = el?.type === 'image'
@@ -232,6 +247,7 @@ const Certificates = () => {
   const [stageRef, setStageRef] = useState(null);
   const transformerRef = useRef(null);
   const shapeRefs = useRef({});
+  const lastPointerPosRef = useRef(null);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedElementIds, setSelectedElementIds] = useState([]);
   const [elements, setElements] = useState([]);
@@ -1006,6 +1022,42 @@ const Certificates = () => {
     setElements([...elements, newText]);
   };
 
+  const getPastePosition = () => {
+    const p = lastPointerPosRef.current;
+    const x = (p && Number.isFinite(p.x)) ? p.x : Math.round(stageSize.width / 2);
+    const y = (p && Number.isFinite(p.y)) ? p.y : Math.round(stageSize.height / 2);
+    return { x, y };
+  };
+
+  const addTextFromClipboard = (text) => {
+    const content = String(text || '').replace(/\r\n/g, '\n').trimEnd();
+    if (!content) return;
+    const pos = getPastePosition();
+    const newText = {
+      id: Date.now().toString(),
+      type: 'text',
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
+      text: content,
+      fontSize: textProperties.fontSize,
+      fontFamily: textProperties.fontFamily,
+      fill: textProperties.fill,
+      fontWeight: textProperties.fontWeight,
+      fontStyle: textProperties.fontStyle,
+      textDecoration: textProperties.textDecoration,
+      align: textProperties.align,
+      verticalAlign: textProperties.verticalAlign,
+      width: Math.min(400, stageSize.width),
+      wordWrap: textProperties.wordWrap,
+      lineHeight: textProperties.lineHeight,
+      letterSpacing: typeof textProperties.letterSpacing === 'number' ? textProperties.letterSpacing : 0,
+      draggable: true
+    };
+    setElements((prev) => [...prev, newText]);
+    setSelectedElement(newText);
+    setSelectedElementIds([newText.id]);
+  };
+
   // Add static image element (after file selection)
   const handleAddImageFromFile = async (file) => {
     if (!file) return;
@@ -1015,11 +1067,12 @@ const Certificates = () => {
 
     // Create element with temporary src; actual upload happens on save
     const id = Date.now().toString();
+    const pos = getPastePosition();
     const newImageEl = {
       id,
       type: 'image',
-      x: 100,
-      y: 100,
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
       width: 200,
       height: 120,
       opacity: 1,
@@ -1036,7 +1089,59 @@ const Certificates = () => {
     img.onerror = () => toast.error('Gagal memuat pratinjau gambar');
 
     setElements(prev => [...prev, newImageEl]);
+    setSelectedElement(newImageEl);
+    setSelectedElementIds([id]);
   };
+
+  useEffect(() => {
+    if (!openDialog) return;
+
+    const isEditableTarget = (target) => {
+      if (!target) return false;
+      const tag = (target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if (target.isContentEditable) return true;
+      const role = target.getAttribute && target.getAttribute('role');
+      if (role === 'textbox') return true;
+      return false;
+    };
+
+    const onPaste = async (e) => {
+      try {
+        if (!openDialog) return;
+        if (isEditableTarget(e.target)) return;
+
+        const dt = e.clipboardData;
+        if (!dt) return;
+
+        const items = Array.from(dt.items || []);
+        const imageItem = items.find((it) => it && it.kind === 'file' && String(it.type || '').startsWith('image/'));
+        const textItem = items.find((it) => it && it.kind === 'string' && (it.type === 'text/plain' || !it.type));
+
+        if (imageItem) {
+          e.preventDefault();
+          const blob = imageItem.getAsFile();
+          if (!blob) return;
+          const ext = (blob.type && blob.type.includes('/')) ? blob.type.split('/')[1] : 'png';
+          const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type || 'image/png' });
+          await handleAddImageFromFile(file);
+          return;
+        }
+
+        if (textItem) {
+          e.preventDefault();
+          const text = dt.getData('text/plain');
+          addTextFromClipboard(text);
+        }
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDialog, stageSize.width, stageSize.height, textProperties]);
 
   const handleAddDynamicText = (field) => {
     const newText = {
@@ -3185,8 +3290,19 @@ const Certificates = () => {
                   height={stageSize.height}
                   ref={setStageRef}
                   style={{ border: '2px solid #e0e0e0', background: 'white', borderRadius: '8px' }}
+                  onMouseMove={(e) => {
+                    const stage = e.target.getStage();
+                    const p = stage?.getPointerPosition?.();
+                    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+                      lastPointerPosRef.current = p;
+                    }
+                  }}
                   onMouseDown={(e) => {
                     const stage = e.target.getStage();
+                    const p = stage?.getPointerPosition?.();
+                    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+                      lastPointerPosRef.current = p;
+                    }
                     const tr = transformerRef.current;
                     // Ignore clicks on transformer handles
                     if (tr && (e.target === tr || e.target.getParent() === tr)) return;
@@ -3203,6 +3319,13 @@ const Certificates = () => {
                         tr.nodes([]);
                         tr.getLayer() && tr.getLayer().batchDraw();
                       }
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    const stage = e.target.getStage();
+                    const p = stage?.getPointerPosition?.();
+                    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+                      lastPointerPosRef.current = p;
                     }
                   }}
                 >
