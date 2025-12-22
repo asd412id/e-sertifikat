@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Container,
@@ -31,6 +31,9 @@ import api from '../services/api';
 const DownloadHub = () => {
   const navigate = useNavigate();
 
+  const didInitRef = useRef(false);
+  const lastFetchKeyRef = useRef('');
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [events, setEvents] = useState([]);
@@ -48,9 +51,15 @@ const DownloadHub = () => {
 
   const fetchEvents = async (page = 1, searchText = search) => {
     try {
+      const q = String(searchText || '').trim();
+      const key = `${page}|${pagination.limit}|${q}`;
+      if (lastFetchKeyRef.current === key) {
+        return;
+      }
+      lastFetchKeyRef.current = key;
+
       setLoading(true);
       setError('');
-      const q = String(searchText || '').trim();
       const res = await api.get(
         `/certificates/public/events?page=${page}&limit=${pagination.limit}&search=${encodeURIComponent(q)}`
       );
@@ -75,10 +84,12 @@ const DownloadHub = () => {
 
   useEffect(() => {
     fetchEvents(1, '');
+    didInitRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    if (!didInitRef.current) return;
     const handler = setTimeout(() => {
       fetchEvents(1, search);
     }, 450);
@@ -204,7 +215,7 @@ const DownloadHub = () => {
                       }}
                     >
                       <CardContent sx={{ p: 3 }}>
-                        <Stack spacing={1.75}>
+                        <Stack spacing={1.5}>
                           <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2}>
                             <Box display="flex" alignItems="flex-start" gap={1.5} sx={{ minWidth: 0 }}>
                               <Avatar
@@ -219,48 +230,76 @@ const DownloadHub = () => {
                                 <EventIcon sx={{ fontSize: 22 }} />
                               </Avatar>
                               <Box sx={{ minWidth: 0 }}>
-                                <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }} noWrap>
-                                  {event.title}
-                                </Typography>
-                                {event.description ? (
-                                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                                    {event.description}
+                                <Tooltip title={event.title || ''} placement="top" arrow>
+                                  <Typography
+                                    variant="h6"
+                                    sx={{
+                                      fontWeight: 800,
+                                      lineHeight: 1.2,
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden'
+                                    }}
+                                  >
+                                    {event.title}
                                   </Typography>
+                                </Tooltip>
+                                {event.description ? (
+                                  <Tooltip title={event.description || ''} placement="top" arrow>
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                      sx={{
+                                        mt: 0.25,
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: 'vertical',
+                                        overflow: 'hidden'
+                                      }}
+                                    >
+                                      {event.description}
+                                    </Typography>
+                                  </Tooltip>
                                 ) : null}
                               </Box>
                             </Box>
 
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                            <Stack direction="row" spacing={1} flexShrink={0}>
                               <Tooltip title="Salin Link">
                                 <Button
                                   variant="outlined"
-                                  startIcon={<ContentCopy />}
                                   onClick={() => handleCopyLink(event)}
-                                  sx={{ borderRadius: 2, fontWeight: 800 }}
+                                  sx={{
+                                    borderRadius: 2,
+                                    minWidth: 44,
+                                    width: 44,
+                                    height: 44,
+                                    px: 0,
+                                    fontWeight: 800
+                                  }}
                                 >
-                                  Salin Link
+                                  <ContentCopy fontSize="small" />
                                 </Button>
                               </Tooltip>
-                              <Button
-                                variant="contained"
-                                startIcon={<OpenInNew />}
-                                onClick={() => navigate(`/download/${event.publicDownloadSlug}`)}
-                                sx={{ borderRadius: 2, fontWeight: 800 }}
-                              >
-                                Buka
-                              </Button>
+                              <Tooltip title="Buka">
+                                <Button
+                                  variant="contained"
+                                  onClick={() => navigate(`/download/${event.publicDownloadSlug}`)}
+                                  sx={{
+                                    borderRadius: 2,
+                                    minWidth: 44,
+                                    width: 44,
+                                    height: 44,
+                                    px: 0,
+                                    fontWeight: 800
+                                  }}
+                                >
+                                  <OpenInNew fontSize="small" />
+                                </Button>
+                              </Tooltip>
                             </Stack>
                           </Box>
-
-                          <Divider />
-
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Link Download"
-                            value={getPublicDownloadUrl(event)}
-                            InputProps={{ readOnly: true }}
-                          />
                         </Stack>
                       </CardContent>
                     </Card>
