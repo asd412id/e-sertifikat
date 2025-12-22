@@ -67,7 +67,7 @@ const Events = () => {
     currentPage: 1,
     totalPages: 1,
     totalCount: 0,
-    limit: 10
+    limit: 12
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
@@ -120,7 +120,7 @@ const Events = () => {
         currentPage: response.data.currentPage,
         totalPages: response.data.totalPages,
         totalCount: response.data.totalCount,
-        limit: response.data.limit || 10
+        limit: response.data.limit || 12
       });
     } catch (error) {
       toast.error('Gagal memuat data kegiatan');

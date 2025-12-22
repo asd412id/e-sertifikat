@@ -2,7 +2,7 @@ import api from './api';
 
 export const eventService = {
   // Get all events
-  getEvents: async (page = 1, limit = 10, search = '') => {
+  getEvents: async (page = 1, limit = 12, search = '') => {
     const response = await api.get(`/events?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
     return response.data;
   },
