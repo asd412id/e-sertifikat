@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useState as useStateReact } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Grid,
   Card,
@@ -42,37 +42,10 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   const TruncatedTooltip = ({ title, children }) => {
-    const ref = useRef(null);
-    const [isTruncated, setIsTruncated] = useStateReact(false);
-
-    const evaluate = () => {
-      const el = ref.current;
-      if (!el) return;
-      const next = el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight;
-      setIsTruncated(next);
-    };
-
-    useLayoutEffect(() => {
-      evaluate();
-    }, [title, children]);
-
-    useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-
-      const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => evaluate()) : null;
-      if (ro) ro.observe(el);
-
-      window.addEventListener('resize', evaluate);
-      return () => {
-        window.removeEventListener('resize', evaluate);
-        if (ro) ro.disconnect();
-      };
-    }, [title, children]);
-
+    const safeTitle = String(title || '').trim();
     return (
-      <Tooltip title={isTruncated ? title : ''} disableHoverListener={!isTruncated}>
-        <Box ref={ref} sx={{ minWidth: 0 }}>
+      <Tooltip title={safeTitle} disableHoverListener={!safeTitle} arrow>
+        <Box sx={{ minWidth: 0 }}>
           {children}
         </Box>
       </Tooltip>

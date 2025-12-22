@@ -448,22 +448,24 @@ const Events = () => {
                 >
                   <CardContent sx={{ p: 3, flex: 1 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                      <Typography
-                        variant="h6"
-                        gutterBottom
-                        sx={{
-                          fontWeight: 'bold',
-                          flex: 1,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          lineHeight: 1.25,
-                          minHeight: '2.5em'
-                        }}
-                      >
-                        {event.title}
-                      </Typography>
+                      <Tooltip title={event.title || ''} placement="top" arrow>
+                        <Typography
+                          variant="h6"
+                          gutterBottom
+                          sx={{
+                            fontWeight: 'bold',
+                            flex: 1,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            lineHeight: 1.25,
+                            minHeight: '2.5em'
+                          }}
+                        >
+                          {event.title}
+                        </Typography>
+                      </Tooltip>
                       <Box>
                         <Tooltip title="Edit Kegiatan">
                           <IconButton
@@ -531,21 +533,23 @@ const Events = () => {
                       </Box>
                     </Box>
 
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      gutterBottom
-                      sx={{
-                        mb: 2,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        minHeight: event.description ? '2.5em' : 0
-                      }}
-                    >
-                      {event.description || ''}
-                    </Typography>
+                    <Tooltip title={event.description || ''} placement="top" arrow>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        gutterBottom
+                        sx={{
+                          mb: 2,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          minHeight: event.description ? '2.5em' : 0
+                        }}
+                      >
+                        {event.description || ''}
+                      </Typography>
+                    </Tooltip>
 
                     <Stack spacing={1.5} sx={{ mb: 3 }}>
                       <Box display="flex" alignItems="center">
