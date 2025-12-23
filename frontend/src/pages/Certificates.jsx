@@ -88,6 +88,20 @@ const Certificates = () => {
     changeTimers.current[key] = setTimeout(fn, delay);
   };
 
+  const toAssetUrl = (assetPath) => {
+    if (typeof assetPath !== 'string') return '';
+    if (!assetPath.startsWith('/uploads/')) return assetPath;
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+    return `${apiBaseUrl}${assetPath}`;
+  };
+
+  const getExtLabel = (fileName) => {
+    const raw = String(fileName || '').trim();
+    const dot = raw.lastIndexOf('.');
+    if (dot <= 0 || dot === raw.length - 1) return 'FILE';
+    return raw.substring(dot + 1).toUpperCase();
+  };
+
   const clampNumber = (value, min, max, step) => {
     const v = Number(value);
     if (!Number.isFinite(v)) return min;
@@ -265,6 +279,18 @@ const Certificates = () => {
   const backgroundImageRef = useRef(null);
   const [backgroundImageFile, setBackgroundImageFile] = useState(null);
   const [stageSize, setStageSize] = useState({ width: 842, height: 595 }); // A4 landscape
+
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [assetPickerMode, setAssetPickerMode] = useState('image');
+  const [assetPickerQuery, setAssetPickerQuery] = useState('');
+  const [assetPickerLoading, setAssetPickerLoading] = useState(false);
+  const [assetPickerAssets, setAssetPickerAssets] = useState([]);
+  const [assetPickerPagination, setAssetPickerPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    limit: 24
+  });
 
   const buildQrPreviewKey = (el) => {
     const w = Math.round(Number(el?.width || 120));
@@ -1280,6 +1306,129 @@ const Certificates = () => {
     setSelectedElementIds([id]);
   };
 
+  const openAssetPicker = async (mode) => {
+    const nextMode = mode || 'image';
+    setAssetPickerMode(nextMode);
+    setAssetPickerQuery('');
+    setAssetPickerAssets([]);
+    setAssetPickerPagination((prev) => ({
+      ...(prev || {}),
+      currentPage: 1,
+      totalPages: 1,
+      totalCount: 0
+    }));
+    setAssetPickerOpen(true);
+    // initial load
+    await fetchAssetPickerAssets(1, '');
+  };
+
+  const fetchAssetPickerAssets = async (page = 1, q = assetPickerQuery) => {
+    try {
+      setAssetPickerLoading(true);
+      const res = await api.get('/assets', {
+        params: {
+          page,
+          limit: assetPickerPagination.limit,
+          q: String(q || '').trim()
+        }
+      });
+      const data = res?.data?.data || {};
+      setAssetPickerAssets(Array.isArray(data.assets) ? data.assets : []);
+      setAssetPickerPagination((prev) => ({
+        ...(prev || {}),
+        currentPage: Number(data.currentPage || page || 1),
+        totalPages: Number(data.totalPages || 1),
+        totalCount: Number(data.totalCount || 0),
+        limit: Number(data.limit || prev?.limit || 24)
+      }));
+    } catch (e) {
+      setAssetPickerAssets([]);
+      setAssetPickerPagination((prev) => ({ ...(prev || {}), currentPage: 1, totalPages: 1, totalCount: 0 }));
+      toast.error(e?.response?.data?.error || e?.message || 'Gagal memuat asset');
+    } finally {
+      setAssetPickerLoading(false);
+    }
+  };
+
+  const applyPickedAsset = async (asset) => {
+    if (!asset || typeof asset.path !== 'string') return;
+
+    if (assetPickerMode === 'background') {
+      try {
+        if (backgroundImage && typeof backgroundImage === 'string' && backgroundImage.startsWith('blob:')) {
+          URL.revokeObjectURL(backgroundImage);
+        }
+      } catch (_) {}
+
+      setBackgroundImage(asset.path);
+      setBackgroundImageObj(null);
+      setBackgroundImageFile(null);
+      setPages((prev) => {
+        const cur = Array.isArray(prev) ? prev : [];
+        if (!cur.length) return cur;
+        const idx = Math.max(0, Math.min(currentPageIndex, cur.length - 1));
+        const next = [...cur];
+        next[idx] = { ...(next[idx] || {}), background: asset.path, _backgroundFile: null };
+        return next;
+      });
+
+      setAssetPickerOpen(false);
+      setAssetPickerAssets([]);
+      toast.success('Background dipilih dari asset');
+      return;
+    }
+
+    if (assetPickerMode === 'qrLogo') {
+      if (!selectedElement || selectedElement.type !== 'qrcode') {
+        toast.error('Pilih elemen QR terlebih dahulu');
+        return;
+      }
+      try {
+        const prev = selectedElement.logoSrc;
+        if (typeof prev === 'string' && prev.startsWith('blob:')) {
+          URL.revokeObjectURL(prev);
+        }
+      } catch (_) {}
+
+      handleUpdateElement(selectedElement.id, { logoEnabled: true, logoSrc: asset.path, _logoFile: null });
+      setAssetPickerOpen(false);
+      setAssetPickerAssets([]);
+      toast.success('Logo QR dipilih dari asset');
+      return;
+    }
+
+    // default: add image element from asset
+    const id = Date.now().toString();
+    const pos = getPastePosition();
+    const newImageEl = {
+      id,
+      type: 'image',
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
+      width: 200,
+      height: 120,
+      opacity: 1,
+      rotation: 0,
+      draggable: true,
+      src: asset.path,
+      _file: null
+    };
+
+    const img = new window.Image();
+    const srcUrl = toAssetUrl(asset.path);
+    if (srcUrl && !srcUrl.startsWith('blob:')) img.crossOrigin = 'anonymous';
+    img.onload = () => setImageCache((prev) => ({ ...prev, [id]: img }));
+    img.onerror = () => toast.error('Gagal memuat gambar asset');
+    img.src = srcUrl;
+
+    setElements((prev) => [...prev, newImageEl]);
+    setSelectedElement(newImageEl);
+    setSelectedElementIds([id]);
+    setAssetPickerOpen(false);
+    setAssetPickerAssets([]);
+    toast.success('Gambar ditambahkan dari asset');
+  };
+
   useEffect(() => {
     if (!openDialog) return;
 
@@ -2210,6 +2359,7 @@ const Certificates = () => {
                     >
                       Tambah Kolom
                     </Button>
+
                   </Box>
                 </Stack>
               </Box>
@@ -2283,6 +2433,148 @@ const Certificates = () => {
               sx={{ borderRadius: 2 }}
             >
               Simpan Pengaturan
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={assetPickerOpen}
+          onClose={() => {
+            setAssetPickerOpen(false);
+            setAssetPickerAssets([]);
+          }}
+          fullWidth
+          maxWidth="md"
+        >
+          <DialogTitle sx={{ fontWeight: 'bold' }}>
+            Pilih Asset
+          </DialogTitle>
+          <DialogContent dividers>
+            <Stack spacing={2}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+                <TextField
+                  value={assetPickerQuery}
+                  onChange={(e) => setAssetPickerQuery(e.target.value)}
+                  placeholder="Cari nama file..."
+                  size="small"
+                  fullWidth
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => fetchAssetPickerAssets(1, assetPickerQuery)}
+                          disabled={assetPickerLoading}
+                        >
+                          Cari
+                        </Button>
+                      </InputAdornment>
+                    )
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                  Total: {assetPickerPagination.totalCount}
+                </Typography>
+              </Stack>
+
+              {assetPickerLoading ? (
+                <Box sx={{ py: 5, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <>
+                  {assetPickerAssets.length === 0 ? (
+                    <Box sx={{ py: 5, textAlign: 'center', color: 'text.secondary' }}>
+                      Tidak ada asset.
+                    </Box>
+                  ) : (
+                    <Grid container spacing={2}>
+                      {assetPickerAssets.map((a) => {
+                        const url = toAssetUrl(a.path);
+                        const ext = getExtLabel(a.fileName);
+                        return (
+                          <Grid item xs={12} sm={6} md={4} lg={3} key={a.uuid || a.path}>
+                            <Paper
+                              variant="outlined"
+                              sx={{
+                                borderRadius: 2,
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                '&:hover': { boxShadow: '0 10px 25px rgba(2,6,23,0.08)' }
+                              }}
+                              onClick={() => applyPickedAsset(a)}
+                            >
+                              <Box sx={{ height: 120, backgroundColor: 'rgba(2, 6, 23, 0.04)', position: 'relative' }}>
+                                <Box
+                                  component="img"
+                                  src={url}
+                                  alt={a.fileName}
+                                  sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  onError={(e) => {
+                                    try { e.currentTarget.style.display = 'none'; } catch (_) {}
+                                  }}
+                                />
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    left: 8,
+                                    top: 8,
+                                    px: 1,
+                                    py: 0.25,
+                                    borderRadius: 1,
+                                    bgcolor: 'rgba(255,255,255,0.92)',
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                    fontSize: 11,
+                                    fontWeight: 900
+                                  }}
+                                >
+                                  {ext}
+                                </Box>
+                              </Box>
+                              <Box sx={{ p: 1.25 }}>
+                                <Tooltip title={a.fileName || ''}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 900 }} noWrap>
+                                    {a.fileName || '-'}
+                                  </Typography>
+                                </Tooltip>
+                                <Typography variant="caption" color="text.secondary">
+                                  Dipakai: {Array.isArray(a.usedBy) ? a.usedBy.length : 0}
+                                </Typography>
+                              </Box>
+                            </Paper>
+                          </Grid>
+                        );
+                      })}
+                    </Grid>
+                  )}
+
+                  {assetPickerPagination.totalPages > 1 ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                      <Pagination
+                        count={assetPickerPagination.totalPages}
+                        page={assetPickerPagination.currentPage}
+                        onChange={(_, page) => fetchAssetPickerAssets(page, assetPickerQuery)}
+                        color="primary"
+                        showFirstButton
+                        showLastButton
+                        disabled={assetPickerLoading}
+                      />
+                    </Box>
+                  ) : null}
+                </>
+              )}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => {
+                setAssetPickerOpen(false);
+                setAssetPickerAssets([]);
+              }}
+            >
+              Tutup
             </Button>
           </DialogActions>
         </Dialog>
@@ -2401,6 +2693,7 @@ const Certificates = () => {
                       >
                         Edit
                       </Button>
+
                       <Button
                         variant="contained"
                         size="medium"
@@ -2738,6 +3031,20 @@ const Certificates = () => {
                       fullWidth
                       variant="outlined"
                       startIcon={<Image />}
+                      onClick={() => openAssetPicker('background')}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      Pilih Latar dari Asset
+                    </Button>
+
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<Image />}
                       component="label"
                       sx={{
                         borderRadius: 2,
@@ -2752,6 +3059,20 @@ const Certificates = () => {
                         accept="image/*"
                         onChange={(e) => handleAddImageFromFile(e.target.files?.[0])}
                       />
+                    </Button>
+
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<Image />}
+                      onClick={() => openAssetPicker('image')}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      Tambah Gambar dari Asset
                     </Button>
                   </Stack>
 
@@ -3601,6 +3922,17 @@ const Certificates = () => {
                             }
                           }}
                         />
+                      </Button>
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Image />}
+                        disabled={!Boolean(selectedElement.logoEnabled)}
+                        onClick={() => openAssetPicker('qrLogo')}
+                        sx={{ borderRadius: 2, fontWeight: 800, alignSelf: 'flex-start' }}
+                      >
+                        Pilih dari Asset
                       </Button>
 
                       <TextField

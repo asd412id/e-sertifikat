@@ -2,7 +2,9 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
-const { CertificateTemplate, Event } = require('../models');
+const { CertificateTemplate, Event, Asset } = require('../models');
+const { buildUniqueFileName } = require('../utils/fileNaming');
+const { Op } = require('sequelize');
 
 class AssetService {
   _collectUploadAssetsFromDesign(design) {
@@ -40,9 +42,10 @@ class AssetService {
     };
   }
 
-  async getUserAssets(userId, page = 1, limit = 50) {
+  async getUserAssets(userId, page = 1, limit = 50, q = '') {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
 
     const templates = await CertificateTemplate.findAll({
       where: { isActive: true },
@@ -56,7 +59,6 @@ class AssetService {
     });
 
     const usageMap = new Map();
-
     for (const t of templates) {
       const assetSet = this._collectUploadAssetsFromDesign(t.design);
       if (typeof t.backgroundImage === 'string' && t.backgroundImage.startsWith('/uploads/')) {
@@ -70,15 +72,40 @@ class AssetService {
       }
     }
 
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
+    const query = String(q || '').trim();
+    const andConditions = [
+      { storedFileName: { [Op.notILike]: '.%' } }
+    ];
+    if (query) {
+      andConditions.push({
+        [Op.or]: [
+          { storedFileName: { [Op.iLike]: `%${query}%` } },
+          { originalFileName: { [Op.iLike]: `%${query}%` } }
+        ]
+      });
+    }
+    const whereClause = {
+      userId,
+      isActive: true,
+      [Op.and]: andConditions
+    };
 
+    const { count, rows } = await Asset.findAndCountAll({
+      where: whereClause,
+      order: [['createdAt', 'DESC']],
+      limit: limitNum,
+      offset
+    });
+
+    const uploadDir = process.env.UPLOAD_DIR || './uploads';
     const assets = [];
-    for (const [assetPath, usedBy] of usageMap.entries()) {
-      const fileName = assetPath.replace('/uploads/', '');
+
+    for (const rec of rows) {
+      const fileName = rec.storedFileName;
       const filePath = path.join(uploadDir, fileName);
 
       let exists = false;
-      let size = null;
+      let size = rec.sizeBytes ?? null;
       let lastModified = null;
 
       try {
@@ -91,34 +118,139 @@ class AssetService {
       }
 
       assets.push({
-        path: assetPath,
+        uuid: rec.uuid,
+        path: rec.path,
         fileName,
         exists,
         size,
         lastModified,
-        usedBy
+        mimeType: rec.mimeType,
+        ext: rec.ext,
+        originalFileName: rec.originalFileName,
+        createdAt: rec.createdAt,
+        usedBy: usageMap.get(rec.path) || []
       });
     }
 
-    assets.sort((a, b) => {
-      const am = a.lastModified ? new Date(a.lastModified).getTime() : 0;
-      const bm = b.lastModified ? new Date(b.lastModified).getTime() : 0;
-      return bm - am;
-    });
-
-    const totalCount = assets.length;
-    const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
-    const normalizedPage = Math.min(pageNum, totalPages);
-    const offset = (normalizedPage - 1) * limitNum;
-    const pagedAssets = assets.slice(offset, offset + limitNum);
+    const totalPages = Math.max(1, Math.ceil(count / limitNum));
 
     return {
-      assets: pagedAssets,
-      totalCount,
+      assets,
+      totalCount: count,
       totalPages,
-      currentPage: normalizedPage,
+      currentPage: pageNum,
       limit: limitNum
     };
+  }
+
+  _mimeFromExt(ext) {
+    const e = String(ext || '').toLowerCase();
+    if (e === '.jpg' || e === '.jpeg') return 'image/jpeg';
+    if (e === '.png') return 'image/png';
+    if (e === '.webp') return 'image/webp';
+    if (e === '.svg') return 'image/svg+xml';
+    return null;
+  }
+
+  async createAssetFromUploadedFile({ userId, buffer, originalName, mimetype }) {
+    const uploadDir = process.env.UPLOAD_DIR || './uploads';
+    const storedFileName = buildUniqueFileName({ prefix: 'img', originalName });
+    const filePath = path.join(uploadDir, storedFileName);
+    await fs.writeFile(filePath, buffer);
+
+    const ext = path.extname(storedFileName);
+    const mimeType = mimetype || this._mimeFromExt(ext);
+    const sizeBytes = buffer?.length ?? null;
+    const assetPath = `/uploads/${storedFileName}`;
+
+    const rec = await Asset.create({
+      userId,
+      storedFileName,
+      originalFileName: originalName || null,
+      path: assetPath,
+      mimeType,
+      ext,
+      sizeBytes
+    });
+
+    return rec;
+  }
+
+  async backfillUserAssetsFromTemplates(userId) {
+    const uploadDir = process.env.UPLOAD_DIR || './uploads';
+
+    // Cleanup: ensure dotfiles never appear in DB for this user
+    try {
+      await Asset.destroy({
+        where: {
+          userId,
+          storedFileName: { [Op.like]: '.%' }
+        }
+      });
+    } catch (_) {
+      // ignore
+    }
+
+    const templates = await CertificateTemplate.findAll({
+      where: { isActive: true },
+      include: [{
+        model: Event,
+        as: 'event',
+        where: { userId, isActive: true },
+        attributes: ['id']
+      }],
+      attributes: ['design', 'backgroundImage']
+    });
+
+    const discovered = new Set();
+
+    for (const t of templates) {
+      const assetSet = this._collectUploadAssetsFromDesign(t.design);
+      if (typeof t.backgroundImage === 'string' && t.backgroundImage.startsWith('/uploads/')) {
+        assetSet.add(t.backgroundImage);
+      }
+      for (const p of assetSet) discovered.add(p);
+    }
+
+    const allowedExt = new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg']);
+
+    let createdCount = 0;
+    let skippedCount = 0;
+    const missingFiles = [];
+
+    for (const assetPath of discovered) {
+      if (!assetPath || typeof assetPath !== 'string' || !assetPath.startsWith('/uploads/')) continue;
+      const fileName = assetPath.replace('/uploads/', '');
+      if (!fileName || fileName.startsWith('.')) continue;
+      const ext = path.extname(fileName).toLowerCase();
+      if (!allowedExt.has(ext)) continue;
+      const filePath = path.join(uploadDir, fileName);
+
+      const existing = await Asset.findOne({ where: { userId, path: assetPath, isActive: true } });
+      if (existing) {
+        skippedCount += 1;
+        continue;
+      }
+
+      try {
+        const st = await fs.stat(filePath);
+        const mimeType = this._mimeFromExt(ext);
+        await Asset.create({
+          userId,
+          storedFileName: fileName,
+          originalFileName: null,
+          path: assetPath,
+          mimeType,
+          ext,
+          sizeBytes: st.size
+        });
+        createdCount += 1;
+      } catch (e) {
+        missingFiles.push({ path: assetPath });
+      }
+    }
+
+    return { createdCount, skippedCount, missingFilesCount: missingFiles.length, missingFiles };
   }
 
   async _getAssetUsageAcrossTemplates(assetPath) {
@@ -181,6 +313,8 @@ class AssetService {
 
     const assetPath = `/uploads/${fileName}`;
 
+    const dbAsset = await Asset.findOne({ where: { userId, storedFileName: fileName, isActive: true } });
+
     const usedByAll = await this._getAssetUsageAcrossTemplates(assetPath);
     const usedBySelf = usedByAll.filter((x) => x.userId === userId).map((x) => ({
       templateUuid: x.templateUuid,
@@ -223,7 +357,33 @@ class AssetService {
 
     await fs.unlink(filePath);
 
+    if (dbAsset) {
+      await dbAsset.destroy();
+    }
+
     return { path: assetPath };
+  }
+
+  async deleteAssetByIdentifier(userId, identifier, force = false) {
+    const raw = String(identifier || '').trim();
+    if (!raw) {
+      const err = new Error('Invalid asset identifier');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+    if (isUuid) {
+      const asset = await Asset.findOne({ where: { uuid: raw, userId, isActive: true } });
+      if (!asset) {
+        const err = new Error('Asset not found');
+        err.statusCode = 404;
+        throw err;
+      }
+      return await this.deleteAssetByFileName(userId, asset.storedFileName, force);
+    }
+
+    return await this.deleteAssetByFileName(userId, raw, force);
   }
 }
 

@@ -54,6 +54,8 @@ const Assets = () => {
   const [error, setError] = useState('');
   const [assets, setAssets] = useState([]);
 
+  const [backfilling, setBackfilling] = useState(false);
+
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -125,12 +127,13 @@ const Assets = () => {
   };
 
   const doDeleteAsset = async ({ force }) => {
-    if (!selectedAsset?.fileName) return;
+    const identifier = selectedAsset?.uuid || selectedAsset?.fileName;
+    if (!identifier) return;
 
     try {
       setDeleting(true);
       const qs = force ? '?force=true' : '';
-      await api.delete(`/assets/${encodeURIComponent(selectedAsset.fileName)}${qs}`);
+      await api.delete(`/assets/${encodeURIComponent(identifier)}${qs}`);
       toast.success('Asset berhasil dihapus');
       closeDeleteDialog();
 
@@ -177,14 +180,34 @@ const Assets = () => {
               Kelola file asset yang digunakan pada template sertifikat kamu.
             </Typography>
           </Box>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={() => fetchAssets(pagination.currentPage)}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={() => fetchAssets(pagination.currentPage)}
+              disabled={loading || backfilling}
+            >
+              Refresh
+            </Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                try {
+                  setBackfilling(true);
+                  await api.post('/assets/backfill');
+                  toast.success('Sinkronisasi asset selesai');
+                  await fetchAssets(1);
+                } catch (e) {
+                  toast.error(e?.response?.data?.error || e?.message || 'Gagal sinkronisasi asset');
+                } finally {
+                  setBackfilling(false);
+                }
+              }}
+              disabled={loading || backfilling}
+            >
+              Sinkronisasi
+            </Button>
+          </Stack>
         </Stack>
       </Box>
 
@@ -210,7 +233,7 @@ const Assets = () => {
           <Box sx={{ p: 2.5 }}>
             {assets.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}>
-                Tidak ada asset yang terdeteksi pada template.
+                Belum ada asset di library. Klik "Sinkronisasi" untuk memasukkan file uploads yang sudah ada.
               </Box>
             ) : (
               <Grid container spacing={2}>
@@ -220,7 +243,7 @@ const Assets = () => {
                   const ext = getExtLabel(a.fileName);
 
                   return (
-                    <Grid item xs={12} sm={6} md={4} lg={3} key={a.path}>
+                    <Grid item xs={12} sm={6} md={4} lg={3} key={a.uuid || a.path}>
                       <Paper
                         variant="outlined"
                         sx={{

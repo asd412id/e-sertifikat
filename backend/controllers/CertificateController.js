@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const { buildUniqueFileName } = require('../utils/fileNaming');
+const AssetService = require('../services/AssetService');
 const { Op, where, literal } = require('sequelize');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
@@ -1588,19 +1589,19 @@ class CertificateController {
         });
       }
 
-      // Save uploaded file
-      const uploadDir = process.env.UPLOAD_DIR || './uploads';
-      const fileName = buildUniqueFileName({ prefix: 'img', originalName: data.filename });
-      const filePath = path.join(uploadDir, fileName);
-
-      await fs.writeFile(filePath, await data.toBuffer());
+      const rec = await AssetService.createAssetFromUploadedFile({
+        userId: request.user.userId,
+        buffer: await data.toBuffer(),
+        originalName: data.filename,
+        mimetype: data.mimetype
+      });
 
       reply.send({
         success: true,
         message: 'Background image uploaded successfully',
         data: {
-          filename: fileName,
-          url: `/uploads/${fileName}`
+          filename: rec.storedFileName,
+          url: rec.path
         }
       });
     } catch (error) {
