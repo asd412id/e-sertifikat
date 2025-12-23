@@ -18,6 +18,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Pagination,
   Typography
 } from '@mui/material';
 import { DeleteOutline, Refresh, Close } from '@mui/icons-material';
@@ -49,6 +50,13 @@ const Assets = () => {
   const [error, setError] = useState('');
   const [assets, setAssets] = useState([]);
 
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    limit: 50
+  });
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -59,23 +67,43 @@ const Assets = () => {
     document.title = `${title} - e-Sertifikat`;
   }, [title]);
 
-  const fetchAssets = async () => {
+  const fetchAssets = async (page = pagination.currentPage) => {
     try {
       setLoading(true);
       setError('');
-      const res = await api.get('/assets');
+      const res = await api.get('/assets', {
+        params: {
+          page,
+          limit: pagination.limit
+        }
+      });
       const data = res?.data?.data || {};
-      setAssets(Array.isArray(data.assets) ? data.assets : []);
+
+      const list = Array.isArray(data.assets) ? data.assets : [];
+      const nextCurrentPage = Number(data.currentPage || page || 1);
+      const nextTotalPages = Number(data.totalPages || 1);
+      const nextTotalCount = Number(data.totalCount || 0);
+      const nextLimit = Number(data.limit || pagination.limit);
+
+      setAssets(list);
+      setPagination((prev) => ({
+        ...(prev || {}),
+        currentPage: nextCurrentPage,
+        totalPages: nextTotalPages,
+        totalCount: nextTotalCount,
+        limit: nextLimit
+      }));
     } catch (e) {
       setError(e?.response?.data?.error || e?.message || 'Gagal memuat asset');
       setAssets([]);
+      setPagination((prev) => ({ ...(prev || {}), totalPages: 1, totalCount: 0 }));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAssets();
+    fetchAssets(1);
   }, []);
 
   const openDeleteDialog = (asset) => {
@@ -98,7 +126,11 @@ const Assets = () => {
       await api.delete(`/assets/${encodeURIComponent(selectedAsset.fileName)}${qs}`);
       toast.success('Asset berhasil dihapus');
       closeDeleteDialog();
-      await fetchAssets();
+
+      const nextTotal = Math.max(0, (pagination.totalCount || 0) - 1);
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / (pagination.limit || 50)));
+      const nextPage = Math.min(pagination.currentPage || 1, nextTotalPages);
+      await fetchAssets(nextPage);
     } catch (e) {
       const status = e?.response?.status;
       const msg = e?.response?.data?.error || e?.message || 'Gagal menghapus asset';
@@ -138,7 +170,7 @@ const Assets = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchAssets}
+            onClick={() => fetchAssets(pagination.currentPage)}
             disabled={loading}
           >
             Refresh
@@ -155,7 +187,7 @@ const Assets = () => {
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }}>
             <Typography variant="h6" sx={{ fontWeight: 800 }}>Daftar Asset</Typography>
             <Typography variant="caption" color="text.secondary">
-              Total: {assets.length}
+              Total: {pagination.totalCount}
             </Typography>
           </Stack>
         </Box>
@@ -238,6 +270,23 @@ const Assets = () => {
           </TableContainer>
         )}
       </Paper>
+
+      {pagination.totalPages > 1 ? (
+        <Box display="flex" justifyContent="center" alignItems="center" mt={3}>
+          <Pagination
+            count={pagination.totalPages}
+            page={pagination.currentPage}
+            onChange={(event, page) => {
+              setPagination((prev) => ({ ...(prev || {}), currentPage: page }));
+              fetchAssets(page);
+            }}
+            color="primary"
+            showFirstButton
+            showLastButton
+            disabled={loading}
+          />
+        </Box>
+      ) : null}
 
       <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog} fullWidth maxWidth="sm">
         <DialogTitle sx={{ pr: 6 }}>

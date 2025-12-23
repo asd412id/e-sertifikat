@@ -3,10 +3,11 @@ const AssetService = require('../services/AssetService');
 class AssetController {
   async listAssets(request, reply) {
     try {
-      const assets = await AssetService.getUserAssets(request.user.userId);
+      const { page = 1, limit = 50 } = request.query || {};
+      const result = await AssetService.getUserAssets(request.user.userId, page, limit);
       reply.send({
         success: true,
-        data: { assets }
+        data: result
       });
     } catch (error) {
       reply.status(500).send({

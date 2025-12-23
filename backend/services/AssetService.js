@@ -40,7 +40,10 @@ class AssetService {
     };
   }
 
-  async getUserAssets(userId) {
+  async getUserAssets(userId, page = 1, limit = 50) {
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+
     const templates = await CertificateTemplate.findAll({
       where: { isActive: true },
       include: [{
@@ -103,7 +106,19 @@ class AssetService {
       return bm - am;
     });
 
-    return assets;
+    const totalCount = assets.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
+    const normalizedPage = Math.min(pageNum, totalPages);
+    const offset = (normalizedPage - 1) * limitNum;
+    const pagedAssets = assets.slice(offset, offset + limitNum);
+
+    return {
+      assets: pagedAssets,
+      totalCount,
+      totalPages,
+      currentPage: normalizedPage,
+      limit: limitNum
+    };
   }
 
   async _getAssetUsageAcrossTemplates(assetPath) {
