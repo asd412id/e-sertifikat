@@ -54,6 +54,7 @@ import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { eventService } from '../services/dataService';
 import toast from 'react-hot-toast';
 
@@ -87,6 +88,15 @@ const Events = () => {
   const [fieldDialog, setFieldDialog] = useState(false);
   const [newField, setNewField] = useState({ name: '', label: '', type: 'text', required: false });
   const [editingFieldIndex, setEditingFieldIndex] = useState(null);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState({
+    title: '',
+    description: '',
+    confirmText: 'Konfirmasi',
+    confirmColor: 'primary',
+    action: null
+  });
 
   const navigate = useNavigate();
 
@@ -250,18 +260,25 @@ const Events = () => {
 
   const handleDelete = async (eventId) => {
     if (deletingId) return;
-    if (window.confirm('Apakah Anda yakin ingin menghapus kegiatan ini?')) {
-      try {
-        setDeletingId(eventId);
-        await eventService.deleteEvent(eventId);
-        toast.success('Kegiatan berhasil dihapus');
-        fetchEvents();
-      } catch (error) {
-        toast.error('Gagal menghapus kegiatan');
-      } finally {
-        setDeletingId(null);
+    setConfirmState({
+      title: 'Konfirmasi Hapus Kegiatan',
+      description: 'Apakah Anda yakin ingin menghapus kegiatan ini?',
+      confirmText: 'Hapus',
+      confirmColor: 'error',
+      action: async () => {
+        try {
+          setDeletingId(eventId);
+          await eventService.deleteEvent(eventId);
+          toast.success('Kegiatan berhasil dihapus');
+          fetchEvents();
+        } catch (error) {
+          toast.error('Gagal menghapus kegiatan');
+        } finally {
+          setDeletingId(null);
+        }
       }
-    }
+    });
+    setConfirmOpen(true);
   };
 
   const handleAddField = () => {
@@ -314,10 +331,17 @@ const Events = () => {
     }
     const field = cur[index];
     const label = field?.label || field?.name || 'field';
-    const ok = window.confirm(`Hapus field peserta "${label}"? Data peserta yang sudah ada tidak akan dihapus, namun kolom ini tidak lagi digunakan.`);
-    if (!ok) return;
-    const fields = cur.filter((_, i) => i !== index);
-    setFormData({ ...formData, participantFields: fields });
+    setConfirmState({
+      title: 'Konfirmasi Hapus Field',
+      description: `Hapus field peserta "${label}"? Data peserta yang sudah ada tidak akan dihapus, namun kolom ini tidak lagi digunakan.`,
+      confirmText: 'Hapus',
+      confirmColor: 'error',
+      action: async () => {
+        const fields = cur.filter((_, i) => i !== index);
+        setFormData({ ...formData, participantFields: fields });
+      }
+    });
+    setConfirmOpen(true);
   };
 
   if (loading) {
@@ -333,6 +357,29 @@ const Events = () => {
   return (
     <Layout>
       <Box>
+        <ConfirmDialog
+          open={confirmOpen}
+          title={confirmState.title}
+          description={confirmState.description}
+          confirmText={confirmState.confirmText}
+          confirmColor={confirmState.confirmColor}
+          loading={Boolean(deletingId) || submitting}
+          onCancel={() => {
+            if (Boolean(deletingId) || submitting) return;
+            setConfirmOpen(false);
+            setConfirmState({ title: '', description: '', confirmText: 'Konfirmasi', confirmColor: 'primary', action: null });
+          }}
+          onConfirm={async () => {
+            if (typeof confirmState.action !== 'function') {
+              setConfirmOpen(false);
+              return;
+            }
+            setConfirmOpen(false);
+            const fn = confirmState.action;
+            setConfirmState({ title: '', description: '', confirmText: 'Konfirmasi', confirmColor: 'primary', action: null });
+            await fn();
+          }}
+        />
         <Paper
           elevation={0}
           sx={{

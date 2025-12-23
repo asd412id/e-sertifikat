@@ -168,7 +168,8 @@ class CertificateJobService {
         .replace(/\s+/g, '_')
         .substring(0, 50);
 
-      const fileName = `sertifikat_${safeName}_${participant.uuid}_${Date.now()}.pdf`;
+      const unique = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+      const fileName = `sertifikat_${safeName}_${participant.uuid}_${unique}.pdf`;
       const filePath = path.join(storageDir, `${job.id}.pdf`);
 
       await fs.writeFile(filePath, pdfBuffer);

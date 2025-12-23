@@ -49,6 +49,7 @@ async function start() {
     await fastify.register(require('./routes/events'), { prefix: '/api/events' });
     await fastify.register(require('./routes/participants'), { prefix: '/api' });
     await fastify.register(require('./routes/certificates'), { prefix: '/api/certificates' });
+    await fastify.register(require('./routes/assets'), { prefix: '/api/assets' });
 
     // Initialize database
     const { sequelize } = require('./models');

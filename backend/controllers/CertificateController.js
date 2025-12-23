@@ -3,7 +3,7 @@ const { Event, Participant, CertificateTemplate, CertificateVerification } = req
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
-const archiver = require('archiver');
+const { buildUniqueFileName } = require('../utils/fileNaming');
 const { Op, where, literal } = require('sequelize');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
@@ -1590,7 +1590,7 @@ class CertificateController {
 
       // Save uploaded file
       const uploadDir = process.env.UPLOAD_DIR || './uploads';
-      const fileName = `bg_${Date.now()}_${data.filename}`;
+      const fileName = buildUniqueFileName({ prefix: 'img', originalName: data.filename });
       const filePath = path.join(uploadDir, fileName);
 
       await fs.writeFile(filePath, await data.toBuffer());

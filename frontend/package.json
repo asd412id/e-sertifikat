@@ -19,6 +19,7 @@
     "date-fns": "^2.30.0",
     "file-saver": "^2.0.5",
     "konva": "^9.2.0",
+    "qrcode": "^1.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.2",

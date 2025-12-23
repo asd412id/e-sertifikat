@@ -2,6 +2,7 @@ const { CertificateTemplate, Event, Participant, sequelize } = require('../model
 const puppeteerPDFService = require('./PuppeteerPDFService');
 const fs = require('fs').promises;
 const path = require('path');
+const { buildUniqueFileName } = require('../utils/fileNaming');
 
 class CertificateService {
   async getEventByUuid(eventUuid, userId) {
@@ -142,6 +143,7 @@ class CertificateService {
           for (const obj of objects) {
             if (!obj) continue;
             if (obj.type === 'image') add(obj.src);
+            if (obj.type === 'qrcode') add(obj.logoSrc);
           }
         }
 
@@ -229,22 +231,79 @@ class CertificateService {
         throw new Error('Template not found');
       }
 
-      // Delete background image file if it exists
-      if (template.design && template.design.background) {
-        const backgroundPath = template.design.background;
-        if (backgroundPath.startsWith('/uploads/')) {
-          const fileName = backgroundPath.replace('/uploads/', '');
-          const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
+      if (template.event && template.event.publicDownloadTemplateId === template.id) {
+        await template.event.update({
+          publicDownloadEnabled: false,
+          publicDownloadIdentifierField: null,
+          publicDownloadSearchFields: null,
+          publicDownloadTemplateId: null,
+          publicDownloadResultFields: null
+        });
+      }
+
+      const collectUploadAssetsFromDesign = (design) => {
+        const assets = new Set();
+        if (!design || typeof design !== 'object') return assets;
+
+        const add = (p) => {
+          if (typeof p === 'string' && p.startsWith('/uploads/')) assets.add(p);
+        };
+
+        const pages = (design.pages && Array.isArray(design.pages))
+          ? design.pages
+          : [{ background: design.background, objects: Array.isArray(design.objects) ? design.objects : [] }];
+
+        for (const page of pages) {
+          if (!page) continue;
+          add(page.background);
+          const objects = Array.isArray(page.objects) ? page.objects : [];
+          for (const obj of objects) {
+            if (!obj) continue;
+            if (obj.type === 'image') add(obj.src);
+            if (obj.type === 'qrcode') add(obj.logoSrc);
+          }
+        }
+
+        return assets;
+      };
+
+      const uploadDir = process.env.UPLOAD_DIR || './uploads';
+      const assetsToDelete = collectUploadAssetsFromDesign(template.design || {});
+      if (typeof template.backgroundImage === 'string' && template.backgroundImage.startsWith('/uploads/')) {
+        assetsToDelete.add(template.backgroundImage);
+      }
+
+      if (assetsToDelete.size) {
+        const otherTemplates = await CertificateTemplate.findAll({
+          where: { isActive: true },
+          attributes: ['uuid', 'design', 'backgroundImage']
+        });
+
+        const isReferencedByOthers = (assetPath) => {
+          for (const t of otherTemplates) {
+            if (!t || t.uuid === template.uuid) continue;
+            if (t.backgroundImage === assetPath) return true;
+            try {
+              const d = t.design;
+              if (d && JSON.stringify(d).includes(assetPath)) return true;
+            } catch (_) {
+            }
+          }
+          return false;
+        };
+
+        for (const assetPath of Array.from(assetsToDelete)) {
+          if (isReferencedByOthers(assetPath)) continue;
+          const fileName = assetPath.replace('/uploads/', '');
+          const filePath = path.join(uploadDir, fileName);
           try {
             await fs.unlink(filePath);
-          } catch (error) {
-            // Ignore error if file doesn't exist
-            console.log(`Failed to delete background image: ${filePath}`);
+          } catch (_) {
           }
         }
       }
 
-      await template.update({ isActive: false });
+      await template.destroy();
       return { message: 'Template deleted successfully' };
     } catch (error) {
       throw error;
@@ -285,9 +344,7 @@ class CertificateService {
         const srcPath = path.join(uploadDir, rel);
         const base = path.basename(rel);
         const ext = path.extname(base);
-        const baseNoExt = ext ? base.slice(0, -ext.length) : base;
-        const unique = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const destFile = `copy_${unique}_${baseNoExt}${ext}`;
+        const destFile = buildUniqueFileName({ prefix: 'copy', originalName: base, extOverride: ext });
         const destPath = path.join(uploadDir, destFile);
 
         try {
@@ -316,6 +373,9 @@ class CertificateService {
           for (const obj of page.objects) {
             if (obj && obj.type === 'image' && obj.src) {
               obj.src = await copyUploadFile(obj.src);
+            }
+            if (obj && obj.type === 'qrcode' && obj.logoSrc) {
+              obj.logoSrc = await copyUploadFile(obj.logoSrc);
             }
           }
         }

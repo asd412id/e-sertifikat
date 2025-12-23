@@ -31,7 +31,7 @@ import {
   Menu,
   Pagination,
   Stack,
-  Divider
+  InputAdornment
 } from '@mui/material';
 import {
   Add,
@@ -49,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { participantService, eventService, certificateService } from '../services/dataService';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -62,6 +63,8 @@ const Participants = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmParticipantId, setConfirmParticipantId] = useState('');
   const didInitSearchEffect = useRef(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -207,18 +210,8 @@ const Participants = () => {
 
   const handleDelete = async (participantId) => {
     if (deletingId) return;
-    if (window.confirm('Apakah Anda yakin ingin menghapus peserta ini?')) {
-      try {
-        setDeletingId(participantId);
-        await participantService.deleteParticipant(participantId);
-        toast.success('Peserta berhasil dihapus');
-        fetchParticipants();
-      } catch (error) {
-        toast.error('Gagal menghapus peserta');
-      } finally {
-        setDeletingId(null);
-      }
-    }
+    setConfirmParticipantId(participantId);
+    setConfirmOpen(true);
   };
 
   const handleImport = async () => {
@@ -472,6 +465,37 @@ const Participants = () => {
   return (
     <Layout>
       <Box>
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Konfirmasi Hapus Peserta"
+          description="Apakah Anda yakin ingin menghapus peserta ini?"
+          confirmText="Hapus"
+          confirmColor="error"
+          loading={Boolean(deletingId)}
+          onCancel={() => {
+            if (deletingId) return;
+            setConfirmOpen(false);
+            setConfirmParticipantId('');
+          }}
+          onConfirm={async () => {
+            if (!confirmParticipantId) {
+              setConfirmOpen(false);
+              return;
+            }
+            setConfirmOpen(false);
+            try {
+              setDeletingId(confirmParticipantId);
+              await participantService.deleteParticipant(confirmParticipantId);
+              toast.success('Peserta berhasil dihapus');
+              fetchParticipants();
+            } catch (error) {
+              toast.error('Gagal menghapus peserta');
+            } finally {
+              setDeletingId(null);
+              setConfirmParticipantId('');
+            }
+          }}
+        />
         <Paper
           elevation={0}
           sx={{

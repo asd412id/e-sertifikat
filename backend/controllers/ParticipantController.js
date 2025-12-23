@@ -1,6 +1,7 @@
 const ParticipantService = require('../services/ParticipantService');
 const path = require('path');
 const fs = require('fs').promises;
+const { buildUniqueFileName } = require('../utils/fileNaming');
 
 class ParticipantController {
   async addParticipant(request, reply) {
@@ -207,7 +208,7 @@ class ParticipantController {
 
       // Save uploaded file temporarily
       const uploadDir = process.env.UPLOAD_DIR || './uploads';
-      const tempFileName = `temp_${Date.now()}_${data.filename}`;
+      const tempFileName = buildUniqueFileName({ prefix: 'temp', originalName: data.filename });
       const tempFilePath = path.join(uploadDir, tempFileName);
 
       await fs.writeFile(tempFilePath, await data.toBuffer());

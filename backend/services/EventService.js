@@ -381,6 +381,16 @@ class EventService {
         throw new Error('Event not found');
       }
 
+      if (event.publicDownloadTemplateId != null || event.publicDownloadEnabled) {
+        await event.update({
+          publicDownloadEnabled: false,
+          publicDownloadIdentifierField: null,
+          publicDownloadSearchFields: null,
+          publicDownloadTemplateId: null,
+          publicDownloadResultFields: null
+        });
+      }
+
       // Delete related certificate templates and their background images
       for (const template of event.certificateTemplates) {
         // Delete background image file if it exists

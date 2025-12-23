@@ -29,6 +29,7 @@ import {
   Logout,
   Settings,
   Help,
+  Folder,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -49,6 +50,7 @@ const Layout = ({ children }) => {
     { text: 'Dasbor', icon: <Dashboard />, path: '/dashboard' },
     { text: 'Kegiatan', icon: <Event />, path: '/events' },
     { text: 'Sertifikat Terbit', icon: <Verified />, path: '/certificates/issued' },
+    { text: 'Asset/File', icon: <Folder />, path: '/assets' },
   ];
 
   const handleDrawerToggle = () => {

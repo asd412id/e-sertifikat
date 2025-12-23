@@ -69,9 +69,11 @@ import {
   ArrowUpward,
   ArrowDownward
 } from '@mui/icons-material';
+import QRCode from 'qrcode';
 import { Stage, Layer, Text, Image as KonvaImage, Transformer, Rect, Group } from 'react-konva';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { certificateService, eventService, participantService } from '../services/dataService';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -290,27 +292,80 @@ const Certificates = () => {
       const size = Math.round(Math.max(Number(el.width || 120), Number(el.height || 120)));
       const url = `${window.location.origin}/api/certificates/verify?token=PREVIEW&sig=PREVIEW`;
 
-      const res = await api.post(
-        '/certificates/qr-preview',
-        {
-          url,
-          size,
-          transparentBackground: Boolean(el.transparentBackground),
-          backgroundColor: el.backgroundColor || '#ffffff',
-          logoEnabled: Boolean(el.logoEnabled),
-          logoSrc: el.logoSrc || '',
-          logoScale: typeof el.logoScale === 'number' ? el.logoScale : 0.22,
-          logoBgEnabled: Boolean(el.logoBgEnabled),
-          logoBgColor: el.logoBgColor || ''
-        },
-        {
-          responseType: 'arraybuffer',
-          timeout: 30000
+      const canvas = document.createElement('canvas');
+      await QRCode.toCanvas(canvas, url, {
+        errorCorrectionLevel: Boolean(el.logoEnabled && el.logoSrc) ? 'H' : 'M',
+        margin: Boolean(el.logoEnabled && el.logoSrc) ? 2 : 0,
+        width: Math.max(120, Math.min(600, size)),
+        color: {
+          dark: '#000000',
+          light: Boolean(el.transparentBackground) ? '#00000000' : (el.backgroundColor || '#ffffff')
         }
-      );
+      });
 
-      const blob = new Blob([res.data], { type: 'image/png' });
-      const objectUrl = URL.createObjectURL(blob);
+      const ctx = canvas.getContext('2d');
+      if (ctx && Boolean(el.logoEnabled) && el.logoSrc) {
+        const maxScale = el.logoBgEnabled ? 0.26 : 0.60;
+        const logoScale = typeof el.logoScale === 'number' ? el.logoScale : 0.22;
+        const clampedScale = Math.max(0.1, Math.min(maxScale, logoScale));
+        const logoSizePx = Math.max(12, Math.round(Math.min(canvas.width, canvas.height) * clampedScale));
+        const pad = Math.max(4, Math.round(logoSizePx * 0.12));
+        const boxSize = Math.min(Math.min(canvas.width, canvas.height), logoSizePx + pad * 2);
+
+        const resolveLogoUrl = (src) => {
+          if (!src || typeof src !== 'string') return '';
+          if (src.startsWith('/uploads/')) {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+            return `${apiBaseUrl}${src}`;
+          }
+          return src;
+        };
+
+        const logoUrl = resolveLogoUrl(el.logoSrc);
+        const logoImg = await new Promise((resolve) => {
+          try {
+            const img = new window.Image();
+            if (!logoUrl.startsWith('blob:')) img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = logoUrl;
+          } catch (_) {
+            resolve(null);
+          }
+        });
+
+        if (logoImg) {
+          const x = Math.round((canvas.width - logoSizePx) / 2);
+          const y = Math.round((canvas.height - logoSizePx) / 2);
+
+          if (Boolean(el.logoBgEnabled)) {
+            const bg = (typeof el.logoBgColor === 'string' && el.logoBgColor.trim()) ? el.logoBgColor.trim() : '#ffffff';
+            const bx = Math.round((canvas.width - boxSize) / 2);
+            const by = Math.round((canvas.height - boxSize) / 2);
+            ctx.save();
+            ctx.fillStyle = bg;
+            ctx.fillRect(bx, by, boxSize, boxSize);
+            ctx.restore();
+          }
+
+          ctx.save();
+          ctx.drawImage(logoImg, x, y, logoSizePx, logoSizePx);
+          ctx.restore();
+        }
+      }
+
+      const objectUrl = await new Promise((resolve) => {
+        try {
+          canvas.toBlob((b) => {
+            if (!b) return resolve('');
+            resolve(URL.createObjectURL(b));
+          }, 'image/png');
+        } catch (_) {
+          resolve('');
+        }
+      });
+
+      if (!objectUrl) return;
       const img = new window.Image();
       img.onload = () => {
         setQrPreviewCache((prev) => {
@@ -419,6 +474,9 @@ const Certificates = () => {
   const [copyingTemplate, setCopyingTemplate] = useState(false);
   const [copyTargetEventId, setCopyTargetEventId] = useState('');
   const [copyEvents, setCopyEvents] = useState([]);
+
+  const [deleteTemplateConfirmOpen, setDeleteTemplateConfirmOpen] = useState(false);
+  const [deleteTemplateId, setDeleteTemplateId] = useState('');
   const [loadingCopyEvents, setLoadingCopyEvents] = useState(false);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1476,7 +1534,7 @@ const Certificates = () => {
         // Upload any pending image files for image elements & strip private keys
         const updatedObjects = [];
         for (const el of (p?.objects || [])) {
-          const { _file, ...cleanBase } = el; // remove internal fields
+          const { _file, _logoFile, ...cleanBase } = el; // remove internal fields
           if (el.type === 'image' && el._file) {
             try {
               const uploadRes = await certificateService.uploadBackground(_file);
@@ -1490,7 +1548,23 @@ const Certificates = () => {
               setSaving(false);
               return;
             }
+          } else if (el.type === 'qrcode' && el._logoFile && Boolean(el.logoEnabled)) {
+            try {
+              const uploadRes = await certificateService.uploadBackground(_logoFile);
+              if (uploadRes.success && uploadRes.data?.url) {
+                updatedObjects.push({ ...cleanBase, logoSrc: uploadRes.data.url, logoEnabled: true });
+              } else {
+                throw new Error('Gagal mengunggah logo QR');
+              }
+            } catch (e) {
+              toast.error(e.message || 'Gagal mengunggah logo QR');
+              setSaving(false);
+              return;
+            }
           } else {
+            if (cleanBase.type === 'qrcode' && typeof cleanBase.logoSrc === 'string' && cleanBase.logoSrc.startsWith('blob:')) {
+              cleanBase.logoSrc = null;
+            }
             updatedObjects.push(cleanBase);
           }
         }
@@ -1625,15 +1699,9 @@ const Certificates = () => {
   }, [elements, fontLoadedTick, openDialog]);
 
   const handleDeleteTemplate = async (templateId) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus template ini?')) {
-      try {
-        await certificateService.deleteTemplate(templateId);
-        toast.success('Template berhasil dihapus');
-        fetchTemplates();
-      } catch (error) {
-        toast.error('Gagal menghapus template');
-      }
-    }
+    setAnchorEl(null);
+    setDeleteTemplateId(templateId);
+    setDeleteTemplateConfirmOpen(true);
   };
 
   const handleOpenCopyTemplate = (template) => {
@@ -1817,6 +1885,37 @@ const Certificates = () => {
   return (
     <Layout>
       <Box>
+        <ConfirmDialog
+          open={deleteTemplateConfirmOpen}
+          title="Konfirmasi Hapus Template"
+          description="Apakah Anda yakin ingin menghapus template ini?"
+          confirmText="Hapus"
+          confirmColor="error"
+          loading={false}
+          onCancel={() => {
+            setAnchorEl(null);
+            setDeleteTemplateConfirmOpen(false);
+            setDeleteTemplateId('');
+          }}
+          onConfirm={async () => {
+            if (!deleteTemplateId) {
+              setAnchorEl(null);
+              setDeleteTemplateConfirmOpen(false);
+              return;
+            }
+            setAnchorEl(null);
+            setDeleteTemplateConfirmOpen(false);
+            const id = deleteTemplateId;
+            setDeleteTemplateId('');
+            try {
+              await certificateService.deleteTemplate(id);
+              toast.success('Template berhasil dihapus');
+              fetchTemplates();
+            } catch (error) {
+              toast.error('Gagal menghapus template');
+            }
+          }}
+        />
         <Paper
           elevation={0}
           sx={{
@@ -2352,14 +2451,20 @@ const Certificates = () => {
           }}
         >
           <MenuItem
-            onClick={() => handleOpenCopyTemplate(selectedTemplate)}
+            onClick={() => {
+              setAnchorEl(null);
+              handleOpenCopyTemplate(selectedTemplate);
+            }}
             sx={{ py: 1.5 }}
           >
             <ContentCopy sx={{ mr: 1.5 }} />
             Salin Template
           </MenuItem>
           <MenuItem
-            onClick={() => handleDeleteTemplate(selectedTemplate?.uuid)}
+            onClick={() => {
+              setAnchorEl(null);
+              handleDeleteTemplate(selectedTemplate?.uuid);
+            }}
             sx={{ py: 1.5, color: 'error.main' }}
           >
             <Delete sx={{ mr: 1.5 }} />
@@ -3486,14 +3591,9 @@ const Certificates = () => {
                             try {
                               const file = e.target.files?.[0];
                               if (!file) return;
-                              const res = await certificateService.uploadBackground(file);
-                              const url = res?.data?.url || res?.url || res?.data?.data?.url;
-                              if (!url) {
-                                toast.error('Gagal upload logo');
-                                return;
-                              }
-                              handleUpdateElement(selectedElement.id, { logoSrc: url, logoEnabled: true });
-                              toast.success('Logo berhasil diupload');
+                              const localUrl = URL.createObjectURL(file);
+                              handleUpdateElement(selectedElement.id, { logoSrc: localUrl, _logoFile: file, logoEnabled: true });
+                              toast.success('Logo berhasil dipilih');
                             } catch (err) {
                               toast.error(err?.response?.data?.error || err?.message || 'Gagal upload logo');
                             } finally {
@@ -3574,7 +3674,15 @@ const Certificates = () => {
                         size="small"
                         variant="text"
                         color="secondary"
-                        onClick={() => handleUpdateElement(selectedElement.id, { logoEnabled: false, logoSrc: null, logoScale: 0.22, logoBgEnabled: false, logoBgColor: '#ffffff' })}
+                        onClick={() => {
+                          try {
+                            const src = selectedElement.logoSrc;
+                            if (typeof src === 'string' && src.startsWith('blob:')) {
+                              URL.revokeObjectURL(src);
+                            }
+                          } catch (_) {}
+                          handleUpdateElement(selectedElement.id, { logoEnabled: false, logoSrc: null, _logoFile: null, logoScale: 0.22, logoBgEnabled: false, logoBgColor: '#ffffff' });
+                        }}
                       >
                         Reset Logo
                       </Button>
