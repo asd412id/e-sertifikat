@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Typography,
@@ -48,6 +48,8 @@ const IssuedCertificates = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
   const [error, setError] = useState('');
+
+  const didInitFetch = useRef(false);
 
   const [items, setItems] = useState([]);
   const [events, setEvents] = useState([]);
@@ -223,11 +225,11 @@ const IssuedCertificates = () => {
   };
 
   useEffect(() => {
-    fetchData(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
+    if (!didInitFetch.current) {
+      didInitFetch.current = true;
+      fetchData(1);
+      return;
+    }
     const t = setTimeout(() => {
       fetchData(1);
     }, 450);
