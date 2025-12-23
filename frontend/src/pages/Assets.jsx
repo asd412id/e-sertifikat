@@ -3,22 +3,19 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  Grid,
   IconButton,
   Paper,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Pagination,
+  Tooltip,
   Typography
 } from '@mui/material';
 import { DeleteOutline, Refresh, Close } from '@mui/icons-material';
@@ -45,6 +42,13 @@ const toAssetUrl = (assetPath) => {
   return `${apiBaseUrl}${assetPath}`;
 };
 
+const getExtLabel = (fileName) => {
+  const raw = String(fileName || '').trim();
+  const dot = raw.lastIndexOf('.');
+  if (dot <= 0 || dot === raw.length - 1) return 'FILE';
+  return raw.substring(dot + 1).toUpperCase();
+};
+
 const Assets = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,6 +64,9 @@ const Assets = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState(null);
 
   const title = useMemo(() => 'Asset/File', []);
 
@@ -155,6 +162,9 @@ const Assets = () => {
   const usedBy = Array.isArray(selectedAsset?.usedBy) ? selectedAsset.usedBy : [];
   const assetUrl = toAssetUrl(selectedAsset?.path);
 
+  const previewUsedBy = Array.isArray(previewAsset?.usedBy) ? previewAsset.usedBy : [];
+  const previewUrl = toAssetUrl(previewAsset?.path);
+
   return (
     <Layout>
       <Box sx={{ mb: 3 }}>
@@ -197,77 +207,139 @@ const Assets = () => {
             <CircularProgress />
           </Box>
         ) : (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 800 }}>Preview</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>File</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>Ukuran</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>Last Modified</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }}>Dipakai</TableCell>
-                  <TableCell sx={{ fontWeight: 800 }} align="right">Aksi</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {assets.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                      Tidak ada asset yang terdeteksi pada template.
-                    </TableCell>
-                  </TableRow>
-                ) : assets.map((a) => {
+          <Box sx={{ p: 2.5 }}>
+            {assets.length === 0 ? (
+              <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}>
+                Tidak ada asset yang terdeteksi pada template.
+              </Box>
+            ) : (
+              <Grid container spacing={2}>
+                {assets.map((a) => {
                   const url = toAssetUrl(a.path);
                   const usedCount = Array.isArray(a.usedBy) ? a.usedBy.length : 0;
+                  const ext = getExtLabel(a.fileName);
+
                   return (
-                    <TableRow key={a.path} hover>
-                      <TableCell>
-                        {url ? (
-                          <Box
-                            component="img"
-                            src={url}
-                            alt={a.fileName}
-                            sx={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider', backgroundColor: '#fff' }}
-                            onError={(e) => {
-                              try { e.currentTarget.style.display = 'none'; } catch (_) {}
+                    <Grid item xs={12} sm={6} md={4} lg={3} key={a.path}>
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 3,
+                          overflow: 'hidden',
+                          position: 'relative',
+                          cursor: 'pointer',
+                          transition: 'transform 120ms ease, box-shadow 120ms ease',
+                          '&:hover': {
+                            transform: 'translateY(-2px)',
+                            boxShadow: '0 10px 30px rgba(2,6,23,0.10)'
+                          }
+                        }}
+                        onClick={() => {
+                          setPreviewAsset(a);
+                          setPreviewOpen(true);
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            height: 150,
+                            backgroundColor: 'rgba(2, 6, 23, 0.04)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            position: 'relative'
+                          }}
+                        >
+                          {url ? (
+                            <Box
+                              component="img"
+                              src={url}
+                              alt={a.fileName}
+                              sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={(e) => {
+                                try { e.currentTarget.style.display = 'none'; } catch (_) {}
+                              }}
+                            />
+                          ) : null}
+
+                          <Chip
+                            size="small"
+                            label={ext}
+                            sx={{
+                              position: 'absolute',
+                              left: 12,
+                              top: 12,
+                              fontWeight: 900,
+                              bgcolor: 'rgba(255,255,255,0.92)',
+                              border: '1px solid',
+                              borderColor: 'divider'
                             }}
                           />
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                          {a.fileName || '-'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {a.path || ''}
-                        </Typography>
-                        {!a.exists ? (
-                          <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
-                            File hilang di server
-                          </Typography>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>{formatBytes(a.size)}</TableCell>
-                      <TableCell>
-                        {a.lastModified ? new Date(a.lastModified).toLocaleString() : '-'}
-                      </TableCell>
-                      <TableCell>{usedCount}</TableCell>
-                      <TableCell align="right">
-                        <IconButton
-                          color="error"
-                          onClick={() => openDeleteDialog(a)}
-                          size="small"
-                          disabled={!a.exists}
-                        >
-                          <DeleteOutline />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
+
+                          {!a.exists ? (
+                            <Chip
+                              size="small"
+                              color="error"
+                              label="Hilang"
+                              sx={{
+                                position: 'absolute',
+                                right: 12,
+                                top: 12,
+                                fontWeight: 900,
+                                bgcolor: 'rgba(255,255,255,0.92)',
+                              }}
+                            />
+                          ) : null}
+
+                          <Tooltip title="Hapus" placement="top">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                disabled={!a.exists}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDeleteDialog(a);
+                                }}
+                                sx={{
+                                  position: 'absolute',
+                                  right: 10,
+                                  bottom: 10,
+                                  bgcolor: 'rgba(255,255,255,0.92)',
+                                  border: '1px solid',
+                                  borderColor: 'divider',
+                                  '&:hover': { bgcolor: 'rgba(255,255,255,1)' }
+                                }}
+                              >
+                                <DeleteOutline fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+
+                        <Box sx={{ p: 2 }}>
+                          <Tooltip title={a.fileName || ''} placement="top">
+                            <Typography variant="subtitle2" sx={{ fontWeight: 900 }} noWrap>
+                              {a.fileName || '-'}
+                            </Typography>
+                          </Tooltip>
+
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.75 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                              {formatBytes(a.size)}
+                            </Typography>
+                            <Divider orientation="vertical" flexItem />
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                              Dipakai: {usedCount}
+                            </Typography>
+                          </Stack>
+                        </Box>
+                      </Paper>
+                    </Grid>
                   );
                 })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+              </Grid>
+            )}
+          </Box>
         )}
       </Paper>
 
@@ -287,6 +359,125 @@ const Assets = () => {
           />
         </Box>
       ) : null}
+
+      <Dialog
+        open={previewOpen}
+        onClose={() => {
+          setPreviewOpen(false);
+          setPreviewAsset(null);
+        }}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle sx={{ pr: 6 }}>
+          Detail Asset
+          <IconButton
+            onClick={() => {
+              setPreviewOpen(false);
+              setPreviewAsset(null);
+            }}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2.5}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Nama File</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                {previewAsset?.fileName || '-'}
+              </Typography>
+            </Box>
+
+            {previewUrl ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  component="img"
+                  src={previewUrl}
+                  alt={previewAsset?.fileName}
+                  sx={{ maxWidth: '100%', maxHeight: 520, borderRadius: 2, border: '1px solid', borderColor: 'divider', backgroundColor: '#fff' }}
+                  onError={(e) => {
+                    try { e.currentTarget.style.display = 'none'; } catch (_) {}
+                  }}
+                />
+              </Box>
+            ) : null}
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Tipe</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {getExtLabel(previewAsset?.fileName)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Ukuran</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {formatBytes(previewAsset?.size)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Last Modified</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {previewAsset?.lastModified ? new Date(previewAsset.lastModified).toLocaleString() : '-'}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Dipakai</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {previewUsedBy.length}
+                </Typography>
+              </Box>
+            </Box>
+
+            {previewUsedBy.length ? (
+              <>
+                <Alert severity="warning">
+                  Asset ini sedang digunakan oleh {previewUsedBy.length} template.
+                </Alert>
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Digunakan pada template</Typography>
+                  <Stack spacing={1}>
+                    {previewUsedBy.map((u) => (
+                      <Paper key={`${u.templateUuid}-${u.eventUuid}`} variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 800 }}>{u.templateName || '-'} </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Event: {u.eventTitle || '-'}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Box>
+              </>
+            ) : (
+              <Alert severity="info">Asset ini tidak terdeteksi digunakan oleh template mana pun.</Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setPreviewOpen(false);
+              setPreviewAsset(null);
+            }}
+          >
+            Tutup
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={!previewAsset?.exists}
+            onClick={() => {
+              setPreviewOpen(false);
+              setSelectedAsset(previewAsset);
+              setDeleteDialogOpen(true);
+            }}
+          >
+            Hapus
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={deleteDialogOpen} onClose={closeDeleteDialog} fullWidth maxWidth="sm">
         <DialogTitle sx={{ pr: 6 }}>
