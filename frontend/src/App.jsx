@@ -89,6 +89,14 @@ function App() {
         path="/assets"
         element={
           <ProtectedRoute>
+            <Navigate to="/files" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/files"
+        element={
+          <ProtectedRoute>
             <Assets />
           </ProtectedRoute>
         }

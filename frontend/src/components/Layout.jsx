@@ -50,7 +50,7 @@ const Layout = ({ children }) => {
     { text: 'Dasbor', icon: <Dashboard />, path: '/dashboard' },
     { text: 'Kegiatan', icon: <Event />, path: '/events' },
     { text: 'Sertifikat Terbit', icon: <Verified />, path: '/certificates/issued' },
-    { text: 'Asset/File', icon: <Folder />, path: '/assets' },
+    { text: 'Asset/File', icon: <Folder />, path: '/files' },
   ];
 
   const handleDrawerToggle = () => {
