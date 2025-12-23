@@ -1091,6 +1091,94 @@ class PuppeteerPDFService {
             }
 
             html += `<img src="${imgUrl}" style="${styles.join('; ')}" />`;
+          } else if (element.type === 'shape') {
+            const baseX = element.x || 0;
+            const baseY = element.y || 0;
+            let w = element.width || 100;
+            let h = element.height || 100;
+            if (w > template.width) w = template.width;
+            if (h > template.height) h = template.height;
+
+            const opacity = (typeof element.opacity === 'number') ? element.opacity : null;
+            const rot = (typeof element.rotation === 'number') ? element.rotation : 0;
+
+            const fill = (typeof element.fill === 'string' && element.fill.trim()) ? element.fill.trim() : '#3b82f6';
+            const strokeCol = (typeof element.borderColor === 'string' && element.borderColor.trim()) ? element.borderColor.trim() : null;
+            const strokeW = Math.max(0, Number(element.borderWidth || 0) || 0);
+
+            const shapeType = String(element.shapeType || 'rect');
+
+            // Shadow (CSS)
+            let shadowCss = '';
+            if (element.shadowColor || element.shadowBlur || element.shadowOffsetX || element.shadowOffsetY) {
+              const sx = element.shadowOffsetX || 0;
+              const sy = element.shadowOffsetY || 0;
+              const blur = element.shadowBlur || 0;
+              const col = element.shadowColor || 'rgba(0,0,0,0.35)';
+              // Prefer filter drop-shadow so it works on SVG too
+              shadowCss = `filter: drop-shadow(${sx}px ${sy}px ${blur}px ${col});`;
+            }
+
+            if (shapeType === 'triangle') {
+              const styles = [
+                'position: absolute',
+                `left: ${baseX}px`,
+                `top: ${baseY}px`,
+                `width: ${w}px`,
+                `height: ${h}px`,
+                opacity != null ? `opacity: ${opacity}` : '',
+                rot ? `transform: rotate(${rot}deg)` : '',
+                rot ? 'transform-origin: top left' : '',
+                shadowCss
+              ].filter(Boolean);
+
+              const sw = strokeW > 0 ? strokeW : 0;
+              const strokeAttr = (strokeCol && sw > 0) ? `stroke=\"${strokeCol}\" stroke-width=\"${sw}\"` : '';
+
+              // Match Konva RegularPolygon (sides=3) sizing:
+              // radius = min(width, height) / 2, centered in the element box.
+              // Angles match Konva default rotation (pointing up): -90, 30, 150 degrees.
+              const cx = w / 2;
+              const cy = h / 2;
+              const r = Math.min(w, h) / 2;
+              const angles = [-90, 30, 150].map((deg) => (deg * Math.PI) / 180);
+              const points = angles
+                .map((a) => {
+                  const x = cx + r * Math.cos(a);
+                  const y = cy + r * Math.sin(a);
+                  return `${x.toFixed(3)},${y.toFixed(3)}`;
+                })
+                .join(' ');
+
+              html += `
+                <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ${w} ${h}\" preserveAspectRatio=\"none\" style=\"${styles.join('; ')}\">
+                  <polygon points=\"${points}\" fill=\"${fill}\" ${strokeAttr} />
+                </svg>
+              `;
+            } else {
+              const styles = [];
+              styles.push('position: absolute');
+              styles.push(`left: ${baseX}px`);
+              styles.push(`top: ${baseY}px`);
+              styles.push(`width: ${w}px`);
+              styles.push(`height: ${h}px`);
+              if (opacity != null) styles.push(`opacity: ${opacity}`);
+              if (rot) {
+                styles.push(`transform: rotate(${rot}deg)`);
+                styles.push('transform-origin: top left');
+              }
+              styles.push(`background: ${fill}`);
+              if (strokeCol && strokeW > 0) {
+                styles.push(`border: ${strokeW}px solid ${strokeCol}`);
+              }
+              if (shapeType === 'circle') {
+                styles.push('border-radius: 9999px');
+              } else if (typeof element.borderRadius === 'number' && element.borderRadius > 0) {
+                styles.push(`border-radius: ${Math.max(0, element.borderRadius)}px`);
+              }
+              if (shadowCss) styles.push(shadowCss);
+              html += `<div style="${styles.join('; ')}"></div>`;
+            }
           } else if (element.type === 'qrcode') {
             const styles = [];
             styles.push('position: absolute');
@@ -1165,7 +1253,7 @@ class PuppeteerPDFService {
                   ? element.logoScale
                   : 0.22;
                 const bgEnabled = Boolean(element.logoBgEnabled);
-                const maxScale = bgEnabled ? 0.26 : 0.60;
+                const maxScale = 0.34;
                 const logoScale = Math.max(0.1, Math.min(maxScale, logoScaleRaw));
                 const logoSize = Math.max(12, Math.round(qrSide * logoScale));
 

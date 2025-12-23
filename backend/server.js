@@ -107,6 +107,17 @@ async function start() {
           }
 
           console.log('[asset-backfill] Completed auto backfill');
+
+          const cleanupEnabled = String(process.env.AUTO_ASSET_CLEANUP_ON_STARTUP || 'true').toLowerCase() !== 'false';
+          if (cleanupEnabled) {
+            const dryRun = String(process.env.AUTO_ASSET_CLEANUP_DRY_RUN || 'false').toLowerCase() === 'true';
+            try {
+              const cleanup = await AssetService.cleanupOrphanUploadFiles({ dryRun });
+              console.log(`[asset-cleanup] deleted=${cleanup.deletedCount} skipped=${cleanup.skippedCount} errors=${cleanup.errorsCount} dryRun=${dryRun}`);
+            } catch (e) {
+              console.log(`[asset-cleanup] failed: ${e?.message || e}`);
+            }
+          }
         } catch (e) {
           console.log(`[asset-backfill] Failed to run auto backfill: ${e?.message || e}`);
         }

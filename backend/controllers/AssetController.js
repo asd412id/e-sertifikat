@@ -63,10 +63,16 @@ class AssetController {
   async backfillAssets(request, reply) {
     try {
       const result = await AssetService.backfillUserAssetsFromTemplates(request.user.userId);
+
+      const dryRun = request.query?.dryRun === '1' || request.query?.dryRun === 'true';
+      const cleanup = await AssetService.cleanupOrphanUploadFiles({ dryRun });
       reply.send({
         success: true,
         message: 'Asset backfill completed',
-        data: result
+        data: {
+          backfill: result,
+          cleanup
+        }
       });
     } catch (error) {
       reply.status(500).send({

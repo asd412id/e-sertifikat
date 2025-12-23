@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -19,7 +19,7 @@ import {
   Tooltip,
   Typography
 } from '@mui/material';
-import { DeleteOutline, Refresh, Close } from '@mui/icons-material';
+import { DeleteOutline, Refresh, Close, UploadFile } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -54,6 +54,12 @@ const Assets = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [assets, setAssets] = useState([]);
+
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
 
   const [backfilling, setBackfilling] = useState(false);
 
@@ -120,6 +126,109 @@ const Assets = () => {
   useEffect(() => {
     fetchAssets(1);
   }, []);
+
+  const handleUploadAsset = useCallback(async (files) => {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+
+    try {
+      setUploading(true);
+
+      let ok = 0;
+      let fail = 0;
+
+      for (const file of list) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          await api.post('/assets/upload', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+          ok += 1;
+        } catch (e) {
+          fail += 1;
+        }
+      }
+
+      await fetchAssets(1);
+
+      if (fail > 0) {
+        toast.error(`Upload selesai: ${ok} berhasil, ${fail} gagal`);
+      } else {
+        toast.success(`Berhasil upload ${ok} file`);
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e?.message || 'Gagal upload asset');
+    } finally {
+      setUploading(false);
+      setUploadInputKey((k) => k + 1);
+    }
+  }, [pagination.limit]);
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      try {
+        const t = e?.target;
+        const tag = (t && t.tagName) ? String(t.tagName).toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
+
+        const items = e?.clipboardData?.items;
+        const list = [];
+        for (const it of (items || [])) {
+          if (it && it.kind === 'file') {
+            const f = it.getAsFile?.();
+            if (f && typeof f.type === 'string' && f.type.startsWith('image/')) {
+              list.push(f);
+            }
+          }
+        }
+        if (!list.length) return;
+        e.preventDefault();
+        handleUploadAsset(list);
+      } catch (_) {
+      }
+    };
+
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [handleUploadAsset]);
+
+  const onDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const hasFiles = Array.from(e.dataTransfer?.items || []).some((x) => x && x.kind === 'file');
+    if (!hasFiles) return;
+    dragCounterRef.current += 1;
+    setDragOver(true);
+  };
+
+  const onDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setDragOver(false);
+    }
+  };
+
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setDragOver(false);
+
+    const list = Array.from(e.dataTransfer?.files || []).filter((f) => f && String(f.type || '').startsWith('image/'));
+    if (!list.length) return;
+    handleUploadAsset(list);
+  };
 
   const assetIdentifier = (a) => a?.uuid || a?.fileName || a?.path || '';
   const selectedSet = useMemo(() => new Set(selectedAssetIds), [selectedAssetIds]);
@@ -238,86 +347,143 @@ const Assets = () => {
 
   return (
     <Layout>
-      <Box sx={{ mb: 3 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 900, mb: 0.5 }}>
-              Asset/File
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Kelola file asset yang digunakan pada template sertifikat kamu.
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
-            <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={() => fetchAssets(pagination.currentPage)}
-              disabled={loading || backfilling}
-            >
-              Refresh
-            </Button>
-            <Button
-              variant="contained"
-              onClick={async () => {
-                try {
-                  setBackfilling(true);
-                  await api.post('/assets/backfill');
-                  toast.success('Sinkronisasi asset selesai');
-                  await fetchAssets(1);
-                } catch (e) {
-                  toast.error(e?.response?.data?.error || e?.message || 'Gagal sinkronisasi asset');
-                } finally {
-                  setBackfilling(false);
-                }
+      <Box
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        sx={{ position: 'relative' }}
+      >
+        {dragOver ? (
+          <Box
+            sx={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1400,
+              backgroundColor: 'rgba(2, 6, 23, 0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none'
+            }}
+          >
+            <Box
+              sx={{
+                px: 4,
+                py: 3,
+                borderRadius: 3,
+                backgroundColor: 'background.paper',
+                border: '2px dashed',
+                borderColor: 'primary.main',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.25)'
               }}
-              disabled={loading || backfilling}
             >
-              Sinkronisasi
-            </Button>
-          </Stack>
-        </Stack>
-      </Box>
-
-      {error ? (
-        <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-      ) : null}
-
-      <Paper elevation={0} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }}>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>Daftar Asset</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Total: {pagination.totalCount}
-            </Typography>
-          </Stack>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mt: 1.5 }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Button size="small" variant="outlined" onClick={selectAllOnPage} disabled={loading || allSelectedOnPage}>
-                Select All
-              </Button>
-              <Button size="small" variant="outlined" onClick={selectNone} disabled={loading || selectedAssetIds.length === 0}>
-                None
-              </Button>
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                Terpilih: {selectedAssetIds.length}
+              <Typography variant="h6" sx={{ fontWeight: 900, textAlign: 'center' }}>
+                Lepaskan untuk upload
               </Typography>
-            </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 0.5 }}>
+                Kamu juga bisa paste gambar dari clipboard
+              </Typography>
+            </Box>
+          </Box>
+        ) : null}
 
-            <Button
-              size="small"
-              variant="contained"
-              color="error"
-              disabled={loading || !anySelected}
-              onClick={() => setBulkDeleteDialogOpen(true)}
-            >
-              Hapus Terpilih
-            </Button>
+        <Box sx={{ mb: 3 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+            <Box>
+              <Typography variant="h4" sx={{ fontWeight: 900, mb: 0.5 }}>
+                Asset/File
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Kelola file asset yang digunakan pada template sertifikat kamu.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
+              <Button
+                variant="outlined"
+                startIcon={<Refresh />}
+                onClick={() => fetchAssets(pagination.currentPage)}
+                disabled={loading || backfilling}
+              >
+                Refresh
+              </Button>
+              <Button
+                variant="contained"
+                component="label"
+                startIcon={uploading ? <CircularProgress size={18} color="inherit" /> : <UploadFile />}
+                disabled={loading || backfilling || uploading}
+              >
+                Upload
+                <input
+                  key={uploadInputKey}
+                  type="file"
+                  hidden
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => handleUploadAsset(e.target.files)}
+                />
+              </Button>
+              <Button
+                variant="contained"
+                onClick={async () => {
+                  try {
+                    setBackfilling(true);
+                    await api.post('/assets/backfill');
+                    toast.success('Sinkronisasi asset selesai');
+                    await fetchAssets(1);
+                  } catch (e) {
+                    toast.error(e?.response?.data?.error || e?.message || 'Gagal sinkronisasi asset');
+                  } finally {
+                    setBackfilling(false);
+                  }
+                }}
+                disabled={loading || backfilling}
+              >
+                Sinkronisasi
+              </Button>
+            </Stack>
           </Stack>
         </Box>
 
-        {loading ? (
+        {error ? (
+          <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
+        ) : null}
+
+        <Paper elevation={0} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>Daftar Asset</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Total: {pagination.totalCount}
+              </Typography>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mt: 1.5 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Button size="small" variant="outlined" onClick={selectAllOnPage} disabled={loading || allSelectedOnPage}>
+                  Select All
+                </Button>
+                <Button size="small" variant="outlined" onClick={selectNone} disabled={loading || selectedAssetIds.length === 0}>
+                  None
+                </Button>
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                  Terpilih: {selectedAssetIds.length}
+                </Typography>
+              </Stack>
+
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                disabled={loading || !anySelected}
+                onClick={() => setBulkDeleteDialogOpen(true)}
+              >
+                Hapus Terpilih
+              </Button>
+            </Stack>
+          </Box>
+
+          {loading ? (
           <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
             <CircularProgress />
           </Box>
@@ -477,8 +643,8 @@ const Assets = () => {
               </Grid>
             )}
           </Box>
-        )}
-      </Paper>
+          )}
+        </Paper>
 
       {pagination.totalPages > 1 ? (
         <Box display="flex" justifyContent="center" alignItems="center" mt={3}>
@@ -731,6 +897,8 @@ const Assets = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      </Box>
     </Layout>
   );
 };

@@ -253,6 +253,104 @@ class AssetService {
     return { createdCount, skippedCount, missingFilesCount: missingFiles.length, missingFiles };
   }
 
+  async cleanupOrphanUploadFiles(options = {}) {
+    const dryRun = Boolean(options?.dryRun);
+    const uploadDir = process.env.UPLOAD_DIR || './uploads';
+
+    const allowedExt = new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg']);
+
+    let dirents = [];
+    try {
+      dirents = await fs.readdir(uploadDir, { withFileTypes: true });
+    } catch (e) {
+      return { deletedCount: 0, deletedFiles: [], errorsCount: 0, errors: [], skippedCount: 0 };
+    }
+
+    const assetRows = await Asset.findAll({
+      where: { isActive: true },
+      attributes: ['storedFileName'],
+      raw: true
+    });
+    const dbFiles = new Set((assetRows || []).map((r) => r?.storedFileName).filter(Boolean));
+
+    const templates = await CertificateTemplate.findAll({
+      where: { isActive: true },
+      include: [{
+        model: Event,
+        as: 'event',
+        where: { isActive: true },
+        required: true,
+        attributes: ['id', 'userId']
+      }],
+      attributes: ['design', 'backgroundImage'],
+      raw: false
+    });
+
+    const referenced = new Set();
+    for (const t of templates || []) {
+      const assetSet = this._collectUploadAssetsFromDesign(t?.design);
+      if (typeof t?.backgroundImage === 'string' && t.backgroundImage.startsWith('/uploads/')) {
+        assetSet.add(t.backgroundImage);
+      }
+      for (const p of assetSet) referenced.add(p);
+    }
+
+    const deletedFiles = [];
+    const errors = [];
+    let skippedCount = 0;
+
+    for (const d of dirents || []) {
+      try {
+        if (!d || typeof d.name !== 'string') continue;
+        if (typeof d.isFile === 'function' && !d.isFile()) continue;
+
+        const fileName = d.name;
+        if (!fileName || fileName.startsWith('.')) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const ext = path.extname(fileName).toLowerCase();
+        if (!allowedExt.has(ext)) {
+          skippedCount += 1;
+          continue;
+        }
+
+        if (dbFiles.has(fileName)) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const assetPath = `/uploads/${fileName}`;
+        if (referenced.has(assetPath)) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const filePath = path.join(uploadDir, fileName);
+        if (!fsSync.existsSync(filePath)) {
+          skippedCount += 1;
+          continue;
+        }
+
+        if (!dryRun) {
+          await fs.unlink(filePath);
+        }
+        deletedFiles.push({ fileName, path: assetPath, dryRun });
+      } catch (e) {
+        errors.push({ fileName: d?.name, error: e?.message || String(e) });
+      }
+    }
+
+    return {
+      deletedCount: deletedFiles.length,
+      deletedFiles,
+      errorsCount: errors.length,
+      errors,
+      skippedCount
+    };
+  }
+
   async _getAssetUsageAcrossTemplates(assetPath) {
     const templates = await CertificateTemplate.findAll({
       where: { isActive: true },

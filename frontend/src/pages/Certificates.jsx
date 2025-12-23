@@ -42,6 +42,9 @@ import {
   Edit,
   Delete,
   Image,
+  CropSquare,
+  RadioButtonUnchecked,
+  ChangeHistory,
   QrCode2,
   UploadFile,
   TextFields,
@@ -70,15 +73,19 @@ import {
   ArrowDownward
 } from '@mui/icons-material';
 import QRCode from 'qrcode';
-import { Stage, Layer, Text, Image as KonvaImage, Transformer, Rect, Group } from 'react-konva';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import ConfirmDialog from '../components/ConfirmDialog';
+import AssetPickerDialog from '../components/certificates/AssetPickerDialog';
+import CertificateEditorCanvas from '../components/certificates/CertificateEditorCanvas';
+import CertificateEditorSidebar from '../components/certificates/CertificateEditorSidebar';
+import CertificateEditorDialog from '../components/certificates/CertificateEditorDialog';
 import { certificateService, eventService, participantService } from '../services/dataService';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const Certificates = () => {
+  const QR_LOGO_MAX_SCALE = 0.34;
   // Used to force re-render after font load
   const [fontLoadedTick, setFontLoadedTick] = useState(0);
   // Debounce map for smoother UI updates (e.g., color pickers)
@@ -285,6 +292,7 @@ const Certificates = () => {
   const [assetPickerQuery, setAssetPickerQuery] = useState('');
   const [assetPickerLoading, setAssetPickerLoading] = useState(false);
   const [assetPickerAssets, setAssetPickerAssets] = useState([]);
+  const [assetPickerSelectedId, setAssetPickerSelectedId] = useState('');
   const [assetPickerPagination, setAssetPickerPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -292,9 +300,14 @@ const Certificates = () => {
     limit: 24
   });
 
+  const [assetPickerUploading, setAssetPickerUploading] = useState(false);
+  const [assetPickerUploadInputKey, setAssetPickerUploadInputKey] = useState(0);
+
   const buildQrPreviewKey = (el) => {
     const w = Math.round(Number(el?.width || 120));
     const h = Math.round(Number(el?.height || 120));
+    const rawScale = (typeof el?.logoScale === 'number' && Number.isFinite(el.logoScale)) ? el.logoScale : 0.22;
+    const safeScale = Math.max(0.1, Math.min(QR_LOGO_MAX_SCALE, rawScale));
     return JSON.stringify({
       w,
       h,
@@ -302,7 +315,7 @@ const Certificates = () => {
       tbg: Boolean(el?.transparentBackground),
       le: Boolean(el?.logoEnabled),
       ls: el?.logoSrc || '',
-      sc: typeof el?.logoScale === 'number' ? Number(el.logoScale.toFixed(3)) : 0.22,
+      sc: Number(safeScale.toFixed(3)),
       lbg: Boolean(el?.logoBgEnabled),
       lbgc: el?.logoBgColor || ''
     });
@@ -331,9 +344,8 @@ const Certificates = () => {
 
       const ctx = canvas.getContext('2d');
       if (ctx && Boolean(el.logoEnabled) && el.logoSrc) {
-        const maxScale = el.logoBgEnabled ? 0.26 : 0.60;
-        const logoScale = typeof el.logoScale === 'number' ? el.logoScale : 0.22;
-        const clampedScale = Math.max(0.1, Math.min(maxScale, logoScale));
+        const logoScale = (typeof el.logoScale === 'number' && Number.isFinite(el.logoScale)) ? el.logoScale : 0.22;
+        const clampedScale = Math.max(0.1, Math.min(QR_LOGO_MAX_SCALE, logoScale));
         const logoSizePx = Math.max(12, Math.round(Math.min(canvas.width, canvas.height) * clampedScale));
         const pad = Math.max(4, Math.round(logoSizePx * 0.12));
         const boxSize = Math.min(Math.min(canvas.width, canvas.height), logoSizePx + pad * 2);
@@ -414,6 +426,9 @@ const Certificates = () => {
   useEffect(() => {
     if (!openDialog) return;
     if (selectedElement?.type !== 'qrcode') return;
+    if (typeof selectedElement.logoScale === 'number' && selectedElement.logoScale > QR_LOGO_MAX_SCALE) {
+      handleUpdateElement(selectedElement.id, { logoScale: QR_LOGO_MAX_SCALE });
+    }
     fetchQrPreview(selectedElement);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openDialog, selectedElement?.id, selectedElement?.type, selectedElement?.width, selectedElement?.height, selectedElement?.backgroundColor, selectedElement?.transparentBackground, selectedElement?.logoEnabled, selectedElement?.logoSrc, selectedElement?.logoScale]);
@@ -1242,6 +1257,91 @@ const Certificates = () => {
     setSelectedElementIds([id]);
   };
 
+  const handleAddShapeRect = () => {
+    const pos = getPastePosition();
+    const id = Date.now().toString();
+    const el = {
+      id,
+      type: 'shape',
+      shapeType: 'rect',
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
+      width: 160,
+      height: 100,
+      opacity: 1,
+      rotation: 0,
+      draggable: true,
+      fill: '#3b82f6',
+      borderColor: '#111827',
+      borderWidth: 0,
+      borderRadius: 0,
+      shadowColor: 'rgba(0,0,0,0)',
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      shadowOpacity: 1
+    };
+    setElements((prev) => [...prev, el]);
+    setSelectedElement(el);
+    setSelectedElementIds([id]);
+  };
+
+  const handleAddShapeTriangle = () => {
+    const pos = getPastePosition();
+    const id = Date.now().toString();
+    const el = {
+      id,
+      type: 'shape',
+      shapeType: 'triangle',
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
+      width: 140,
+      height: 120,
+      opacity: 1,
+      rotation: 0,
+      draggable: true,
+      fill: '#f59e0b',
+      borderColor: '#111827',
+      borderWidth: 0,
+      shadowColor: 'rgba(0,0,0,0)',
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      shadowOpacity: 1
+    };
+    setElements((prev) => [...prev, el]);
+    setSelectedElement(el);
+    setSelectedElementIds([id]);
+  };
+
+  const handleAddShapeCircle = () => {
+    const pos = getPastePosition();
+    const id = Date.now().toString();
+    const el = {
+      id,
+      type: 'shape',
+      shapeType: 'circle',
+      x: Math.max(0, Math.min(stageSize.width - 20, Math.round(pos.x))),
+      y: Math.max(0, Math.min(stageSize.height - 20, Math.round(pos.y))),
+      width: 120,
+      height: 120,
+      opacity: 1,
+      rotation: 0,
+      draggable: true,
+      fill: '#22c55e',
+      borderColor: '#111827',
+      borderWidth: 0,
+      shadowColor: 'rgba(0,0,0,0)',
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      shadowOpacity: 1
+    };
+    setElements((prev) => [...prev, el]);
+    setSelectedElement(el);
+    setSelectedElementIds([id]);
+  };
+
   const addTextFromClipboard = (text) => {
     const content = String(text || '').replace(/\r\n/g, '\n').trimEnd();
     if (!content) return;
@@ -1311,6 +1411,7 @@ const Certificates = () => {
     setAssetPickerMode(nextMode);
     setAssetPickerQuery('');
     setAssetPickerAssets([]);
+    setAssetPickerSelectedId('');
     setAssetPickerPagination((prev) => ({
       ...(prev || {}),
       currentPage: 1,
@@ -1321,6 +1422,8 @@ const Certificates = () => {
     // initial load
     await fetchAssetPickerAssets(1, '');
   };
+
+  const assetIdentifier = (a) => a?.uuid || a?.fileName || a?.path || '';
 
   const fetchAssetPickerAssets = async (page = 1, q = assetPickerQuery) => {
     try {
@@ -1347,6 +1450,51 @@ const Certificates = () => {
       toast.error(e?.response?.data?.error || e?.message || 'Gagal memuat asset');
     } finally {
       setAssetPickerLoading(false);
+    }
+  };
+
+  const handleUploadAssetFromPicker = async (files) => {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+
+    try {
+      setAssetPickerUploading(true);
+
+      let ok = 0;
+      let fail = 0;
+      let lastUploaded = null;
+
+      for (const file of list) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await api.post('/assets/upload', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+          ok += 1;
+          lastUploaded = { res, file };
+        } catch (_) {
+          fail += 1;
+        }
+      }
+
+      await fetchAssetPickerAssets(1, assetPickerQuery);
+
+      if (fail > 0) toast.error(`Upload selesai: ${ok} berhasil, ${fail} gagal`);
+      else toast.success(`Berhasil upload ${ok} file`);
+
+      // after upload, keep dialog open and auto-select the last uploaded asset
+      const uploaded = lastUploaded?.res?.data?.data;
+      const lastFile = lastUploaded?.file;
+      const selectedId = uploaded?.uuid || uploaded?.filename || uploaded?.url || lastFile?.name || '';
+      if (selectedId) setAssetPickerSelectedId(String(selectedId));
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e?.message || 'Gagal upload asset');
+    } finally {
+      setAssetPickerUploading(false);
+      setAssetPickerUploadInputKey((k) => k + 1);
     }
   };
 
@@ -2359,7 +2507,6 @@ const Certificates = () => {
                     >
                       Tambah Kolom
                     </Button>
-
                   </Box>
                 </Stack>
               </Box>
@@ -2437,147 +2584,38 @@ const Certificates = () => {
           </DialogActions>
         </Dialog>
 
-        <Dialog
+        <AssetPickerDialog
           open={assetPickerOpen}
           onClose={() => {
             setAssetPickerOpen(false);
             setAssetPickerAssets([]);
+            setAssetPickerSelectedId('');
           }}
-          fullWidth
-          maxWidth="md"
-        >
-          <DialogTitle sx={{ fontWeight: 'bold' }}>
-            Pilih Asset
-          </DialogTitle>
-          <DialogContent dividers>
-            <Stack spacing={2}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
-                <TextField
-                  value={assetPickerQuery}
-                  onChange={(e) => setAssetPickerQuery(e.target.value)}
-                  placeholder="Cari nama file..."
-                  size="small"
-                  fullWidth
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => fetchAssetPickerAssets(1, assetPickerQuery)}
-                          disabled={assetPickerLoading}
-                        >
-                          Cari
-                        </Button>
-                      </InputAdornment>
-                    )
-                  }}
-                />
-                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                  Total: {assetPickerPagination.totalCount}
-                </Typography>
-              </Stack>
-
-              {assetPickerLoading ? (
-                <Box sx={{ py: 5, display: 'flex', justifyContent: 'center' }}>
-                  <CircularProgress />
-                </Box>
-              ) : (
-                <>
-                  {assetPickerAssets.length === 0 ? (
-                    <Box sx={{ py: 5, textAlign: 'center', color: 'text.secondary' }}>
-                      Tidak ada asset.
-                    </Box>
-                  ) : (
-                    <Grid container spacing={2}>
-                      {assetPickerAssets.map((a) => {
-                        const url = toAssetUrl(a.path);
-                        const ext = getExtLabel(a.fileName);
-                        return (
-                          <Grid item xs={12} sm={6} md={4} lg={3} key={a.uuid || a.path}>
-                            <Paper
-                              variant="outlined"
-                              sx={{
-                                borderRadius: 2,
-                                overflow: 'hidden',
-                                cursor: 'pointer',
-                                '&:hover': { boxShadow: '0 10px 25px rgba(2,6,23,0.08)' }
-                              }}
-                              onClick={() => applyPickedAsset(a)}
-                            >
-                              <Box sx={{ height: 120, backgroundColor: 'rgba(2, 6, 23, 0.04)', position: 'relative' }}>
-                                <Box
-                                  component="img"
-                                  src={url}
-                                  alt={a.fileName}
-                                  sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                  onError={(e) => {
-                                    try { e.currentTarget.style.display = 'none'; } catch (_) {}
-                                  }}
-                                />
-                                <Box
-                                  sx={{
-                                    position: 'absolute',
-                                    left: 8,
-                                    top: 8,
-                                    px: 1,
-                                    py: 0.25,
-                                    borderRadius: 1,
-                                    bgcolor: 'rgba(255,255,255,0.92)',
-                                    border: '1px solid',
-                                    borderColor: 'divider',
-                                    fontSize: 11,
-                                    fontWeight: 900
-                                  }}
-                                >
-                                  {ext}
-                                </Box>
-                              </Box>
-                              <Box sx={{ p: 1.25 }}>
-                                <Tooltip title={a.fileName || ''}>
-                                  <Typography variant="subtitle2" sx={{ fontWeight: 900 }} noWrap>
-                                    {a.fileName || '-'}
-                                  </Typography>
-                                </Tooltip>
-                                <Typography variant="caption" color="text.secondary">
-                                  Dipakai: {Array.isArray(a.usedBy) ? a.usedBy.length : 0}
-                                </Typography>
-                              </Box>
-                            </Paper>
-                          </Grid>
-                        );
-                      })}
-                    </Grid>
-                  )}
-
-                  {assetPickerPagination.totalPages > 1 ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                      <Pagination
-                        count={assetPickerPagination.totalPages}
-                        page={assetPickerPagination.currentPage}
-                        onChange={(_, page) => fetchAssetPickerAssets(page, assetPickerQuery)}
-                        color="primary"
-                        showFirstButton
-                        showLastButton
-                        disabled={assetPickerLoading}
-                      />
-                    </Box>
-                  ) : null}
-                </>
-              )}
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button
-              onClick={() => {
-                setAssetPickerOpen(false);
-                setAssetPickerAssets([]);
-              }}
-            >
-              Tutup
-            </Button>
-          </DialogActions>
-        </Dialog>
+          mode={assetPickerMode}
+          query={assetPickerQuery}
+          onQueryChange={(v) => setAssetPickerQuery(v)}
+          onSearch={() => fetchAssetPickerAssets(1, assetPickerQuery)}
+          loading={assetPickerLoading}
+          assets={assetPickerAssets}
+          pagination={assetPickerPagination}
+          onPageChange={(p) => fetchAssetPickerAssets(p, assetPickerQuery)}
+          selectedId={assetPickerSelectedId}
+          setSelectedId={(id) => setAssetPickerSelectedId(id)}
+          assetIdentifier={assetIdentifier}
+          toAssetUrl={toAssetUrl}
+          getExtLabel={getExtLabel}
+          uploading={assetPickerUploading}
+          uploadInputKey={assetPickerUploadInputKey}
+          onUploadFiles={(files) => handleUploadAssetFromPicker(files)}
+          onApplySelected={() => {
+            const a = (assetPickerAssets || []).find(x => String(assetIdentifier(x)) === String(assetPickerSelectedId));
+            if (!a) {
+              toast.error('Pilih asset terlebih dahulu');
+              return;
+            }
+            applyPickedAsset(a);
+          }}
+        />
 
         {templates.length === 0 ? (
           <Paper elevation={0} sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 3 }}>
@@ -2832,253 +2870,54 @@ const Certificates = () => {
           </DialogActions>
         </Dialog>
 
-        {/* Dialog Editor Sertifikat */}
-        <Dialog
+        <CertificateEditorDialog
           open={openDialog}
           onClose={handleCloseEditor}
-          maxWidth="xl"
-          fullWidth
-          PaperProps={{
-            sx: {
-              height: '90vh',
-              borderRadius: 3
-            }
-          }}
+          isEdit={Boolean(selectedTemplate)}
+          pageLabel={`Halaman ${Math.min(currentPageIndex + 1, Math.max(1, pages?.length || 1))}/${Math.max(1, pages?.length || 1)}`}
+          canPrev={Boolean(pages && pages.length > 1 && currentPageIndex > 0)}
+          canNext={Boolean(pages && pages.length > 1 && currentPageIndex < (pages.length - 1))}
+          onPrev={() => handleGoToPage(Math.max(0, currentPageIndex - 1))}
+          onNext={() => handleGoToPage(Math.min((pages?.length || 1) - 1, currentPageIndex + 1))}
+          onAddPage={handleAddPage}
+          onRequestDeletePage={requestDeleteCurrentPage}
+          canDeletePage={Boolean(pages && pages.length > 1)}
+          onCancel={handleCloseEditor}
+          onSave={handleSaveTemplate}
+          saving={saving}
         >
-          <DialogTitle sx={{ pb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-            <Box>
-              <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-                {selectedTemplate ? 'Edit Template Sertifikat' : 'Buat Template Sertifikat'}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Halaman {Math.min(currentPageIndex + 1, Math.max(1, pages?.length || 1))}/{Math.max(1, pages?.length || 1)}
-              </Typography>
-            </Box>
-
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Tooltip title="Sebelumnya">
-                <span>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleGoToPage(Math.max(0, currentPageIndex - 1))}
-                    disabled={!pages || pages.length <= 1 || currentPageIndex <= 0}
-                    sx={{ border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <ArrowBack fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Tooltip title="Berikutnya">
-                <span>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleGoToPage(Math.min((pages?.length || 1) - 1, currentPageIndex + 1))}
-                    disabled={!pages || pages.length <= 1 || currentPageIndex >= (pages.length - 1)}
-                    sx={{ border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <ArrowForward fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-
-              <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={handleAddPage}
-                startIcon={<Add fontSize="small" />}
-                sx={{ borderRadius: 2, textTransform: 'none' }}
-              >
-                Tambah Halaman
-              </Button>
-              <Tooltip title="Hapus halaman aktif">
-                <span>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={requestDeleteCurrentPage}
-                    disabled={!pages || pages.length <= 1}
-                    sx={{ border: '1px solid', borderColor: 'divider' }}
-                  >
-                    <Delete fontSize="small" />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Stack>
-          </DialogTitle>
-          <DialogContent sx={{ display: 'flex', gap: 3, p: 3 }}>
-            {/* Panel Kiri - Tools */}
-            <Paper
-              elevation={0}
-              sx={{
-                width: 320,
-                p: 3,
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2
-              }}
-            >
-              <Box
-                sx={{
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 2,
-                  bgcolor: 'background.paper',
-                  pb: 2
-                }}
-              >
-                <TextField
-                  label="Nama Template"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  fullWidth
-                  sx={{ mb: 2 }}
-                />
-
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                  <Tabs
-                    value={tabValue}
-                    onChange={(e, v) => setTabValue(v)}
-                    sx={{
-                      minHeight: 36,
-                      '& .MuiTab-root': {
-                        fontWeight: 'bold',
-                        fontSize: '0.9rem',
-                        minHeight: 36
-                      }
-                    }}
-                  >
-                    <Tab label="Elemen" />
-                    <Tab label="Properti" />
-                  </Tabs>
-                </Box>
-
-                <Divider sx={{ mt: 2 }} />
-              </Box>
-
-              <Box
-                ref={leftPanelScrollRef}
-                onScroll={(e) => {
-                  leftPanelScrollTopRef.current = e.currentTarget.scrollTop;
-                }}
-                sx={{
-                  flex: 1,
-                  overflow: 'auto',
-                  pt: 2,
-                  pr: 1,
-                  pb: 6
-                }}
-              >
+          {/* Panel Kiri - Tools */}
+          <CertificateEditorSidebar
+            templateName={templateName}
+            onTemplateNameChange={(v) => setTemplateName(v)}
+            tabValue={tabValue}
+            onTabChange={(v) => setTabValue(v)}
+            leftPanelScrollRef={leftPanelScrollRef}
+            onLeftPanelScroll={(e) => {
+              leftPanelScrollTopRef.current = e.currentTarget.scrollTop;
+            }}
+          >
                 <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
                     Tambah Elemen
                   </Typography>
 
-                  <Stack direction="column" spacing={2}>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<TextFields />}
-                      onClick={handleAddText}
-                      sx={{
-                        borderRadius: 2,
-                        py: 1.5,
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      Tambah Teks
-                    </Button>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<Image />}
+                    onClick={() => openAssetPicker('background')}
+                    sx={{
+                      borderRadius: 2,
+                      py: 1.5,
+                      justifyContent: 'flex-start',
+                      mb: 2
+                    }}
+                  >
+                    Unggah Latar Belakang
+                  </Button>
 
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<QrCode2 />}
-                      onClick={handleAddQrCode}
-                      sx={{
-                        borderRadius: 2,
-                        py: 1.5,
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      QR Code Verifikator
-                    </Button>
-
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Image />}
-                      component="label"
-                      sx={{
-                        borderRadius: 2,
-                        py: 1.5,
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      Unggah Latar Belakang
-                      <input
-                        type="file"
-                        hidden
-                        accept="image/*"
-                        onChange={handleBackgroundUpload}
-                      />
-                    </Button>
-
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Image />}
-                      onClick={() => openAssetPicker('background')}
-                      sx={{
-                        borderRadius: 2,
-                        py: 1.5,
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      Pilih Latar dari Asset
-                    </Button>
-
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Image />}
-                      component="label"
-                      sx={{
-                        borderRadius: 2,
-                        py: 1.5,
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      Tambah Gambar
-                      <input
-                        type="file"
-                        hidden
-                        accept="image/*"
-                        onChange={(e) => handleAddImageFromFile(e.target.files?.[0])}
-                      />
-                    </Button>
-
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Image />}
-                      onClick={() => openAssetPicker('image')}
-                      sx={{
-                        borderRadius: 2,
-                        py: 1.5,
-                        justifyContent: 'flex-start'
-                      }}
-                    >
-                      Tambah Gambar dari Asset
-                    </Button>
-                  </Stack>
-
-                  <Divider sx={{ my: 3 }} />
-
-                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 800, mb: 1 }}>
                     Field Dinamis
                   </Typography>
                   <Stack spacing={1}>
@@ -3099,11 +2938,93 @@ const Certificates = () => {
                       </Button>
                     ))}
                   </Stack>
+
+                  <Divider sx={{ my: 3 }} />
+
+                  <Stack direction="column" spacing={2}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<TextFields />}
+                      onClick={handleAddText}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      Tambah Teks
+                    </Button>
+
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<Image />}
+                      onClick={() => openAssetPicker('image')}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      Tambah Gambar
+                    </Button>
+
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 900, mb: 1 }}>
+                        Bentuk
+                      </Typography>
+                      <Stack direction="column" spacing={1}>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<CropSquare />}
+                          onClick={handleAddShapeRect}
+                          sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
+                        >
+                          Kotak
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<RadioButtonUnchecked />}
+                          onClick={handleAddShapeCircle}
+                          sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
+                        >
+                          Lingkaran
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<ChangeHistory />}
+                          onClick={handleAddShapeTriangle}
+                          sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
+                        >
+                          Segitiga
+                        </Button>
+                      </Stack>
+                    </Paper>
+
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<QrCode2 />}
+                      onClick={handleAddQrCode}
+                      sx={{
+                        borderRadius: 2,
+                        py: 1.5,
+                        justifyContent: 'flex-start'
+                      }}
+                    >
+                      QR Code Verifikator
+                    </Button>
+                  </Stack>
+
                 </Box>
 
                 <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
                   <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                    Properti {selectedElement?.type === 'image' ? 'Gambar' : selectedElement?.type === 'qrcode' ? 'QR Code' : 'Teks'}
+                    Properti {selectedElement?.type === 'image' ? 'Gambar' : selectedElement?.type === 'qrcode' ? 'QR Code' : selectedElement?.type === 'shape' ? 'Shape' : 'Teks'}
                   </Typography>
 
                   {selectedElement?.type === 'text' && (
@@ -3547,6 +3468,223 @@ const Certificates = () => {
                     </Stack>
                   )}
 
+                  {selectedElement?.type === 'shape' && (
+                    <Stack spacing={3}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 900 }}>
+                        Tipe: {selectedElement.shapeType === 'circle' ? 'Lingkaran' : selectedElement.shapeType === 'triangle' ? 'Segitiga' : 'Kotak'}
+                      </Typography>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Posisi X"
+                          type="number"
+                          value={Math.round(selectedElement.x || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { x: Number(e.target.value) })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Posisi Y"
+                          type="number"
+                          value={Math.round(selectedElement.y || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { y: Number(e.target.value) })}
+                          fullWidth
+                        />
+                      </Box>
+
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Lebar (px)"
+                          type="number"
+                          value={Math.round(selectedElement.width || 100)}
+                          onChange={(e) => {
+                            const w = Math.max(5, Number(e.target.value));
+                            if (selectedElement.shapeType === 'circle') {
+                              handleUpdateElement(selectedElement.id, { width: w, height: w });
+                            } else {
+                              handleUpdateElement(selectedElement.id, { width: w });
+                            }
+                          }}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Tinggi (px)"
+                          type="number"
+                          value={Math.round(selectedElement.height || 100)}
+                          onChange={(e) => {
+                            const h = Math.max(5, Number(e.target.value));
+                            if (selectedElement.shapeType === 'circle') {
+                              handleUpdateElement(selectedElement.id, { width: h, height: h });
+                            } else {
+                              handleUpdateElement(selectedElement.id, { height: h });
+                            }
+                          }}
+                          fullWidth
+                          disabled={selectedElement.shapeType === 'circle'}
+                        />
+                      </Box>
+
+                      <TextField
+                        label="Warna (Fill)"
+                        type="color"
+                        value={selectedElement.fill || '#3b82f6'}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          scheduleUpdate('shapeFill', () => handleUpdateElement(selectedElement.id, { fill: val }), 60);
+                        }}
+                        fullWidth
+                      />
+
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Border
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna Border"
+                          type="color"
+                          value={selectedElement.borderColor || '#000000'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('shapeBorderColor', () => handleUpdateElement(selectedElement.id, { borderColor: val }), 60);
+                          }}
+                        />
+                        <TextField
+                          label="Lebar Border (px)"
+                          type="number"
+                          value={Math.round(selectedElement.borderWidth || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { borderWidth: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+
+                      {selectedElement.shapeType === 'rect' ? (
+                        <TextField
+                          label="Radius (px)"
+                          type="number"
+                          value={Math.round(selectedElement.borderRadius || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { borderRadius: Math.max(0, Number(e.target.value)) })}
+                          fullWidth
+                        />
+                      ) : null}
+
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Shadow
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Warna"
+                          type="color"
+                          value={selectedElement.shadowColor || '#000000'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            scheduleUpdate('shapeShadowColor', () => handleUpdateElement(selectedElement.id, { shadowColor: val }), 60);
+                          }}
+                        />
+                        <TextField
+                          label="Blur"
+                          type="number"
+                          value={Math.round(selectedElement.shadowBlur || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowBlur: Math.max(0, Number(e.target.value)) })}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                        <TextField
+                          label="Offset X"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetX || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetX: Number(e.target.value) })}
+                        />
+                        <TextField
+                          label="Offset Y"
+                          type="number"
+                          value={Math.round(selectedElement.shadowOffsetY || 0)}
+                          onChange={(e) => handleUpdateElement(selectedElement.id, { shadowOffsetY: Number(e.target.value) })}
+                        />
+                      </Box>
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity Shadow: {typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity.toFixed(2) : 1}
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          <Slider
+                            value={typeof selectedElement.shadowOpacity === 'number' ? selectedElement.shadowOpacity : 1}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { shadowOpacity: Number(value) })}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            valueLabelDisplay="auto"
+                          />
+                          <TextField
+                            type="number"
+                            value={typeof selectedElement.shadowOpacity === 'number' ? Number(selectedElement.shadowOpacity.toFixed(2)) : 1}
+                            inputProps={{ min: 0, max: 1, step: 0.01 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, 0, 1, 0.01);
+                              handleUpdateElement(selectedElement.id, { shadowOpacity: next });
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                      </Box>
+
+                      <Divider />
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Rotasi: {Math.round(selectedElement.rotation || 0)}°
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          <Slider
+                            value={selectedElement.rotation || 0}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { rotation: Number(value) })}
+                            min={-180}
+                            max={180}
+                            step={1}
+                            valueLabelDisplay="auto"
+                          />
+                          <TextField
+                            type="number"
+                            value={Math.round(selectedElement.rotation || 0)}
+                            inputProps={{ min: -180, max: 180, step: 1 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, -180, 180, 1);
+                              handleUpdateElement(selectedElement.id, { rotation: Math.round(next) });
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                      </Box>
+
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Opacity: {typeof selectedElement.opacity === 'number' ? selectedElement.opacity.toFixed(2) : 1}
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          <Slider
+                            value={typeof selectedElement.opacity === 'number' ? selectedElement.opacity : 1}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { opacity: Number(value) })}
+                            min={0.1}
+                            max={1}
+                            step={0.01}
+                            valueLabelDisplay="auto"
+                          />
+                          <TextField
+                            type="number"
+                            value={typeof selectedElement.opacity === 'number' ? Number(selectedElement.opacity.toFixed(2)) : 1}
+                            inputProps={{ min: 0.1, max: 1, step: 0.01 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, 0.1, 1, 0.01);
+                              handleUpdateElement(selectedElement.id, { opacity: next });
+                            }}
+                            size="small"
+                          />
+                        </Box>
+                      </Box>
+                    </Stack>
+                  )}
+
                   {selectedElement?.type === 'image' && (
                     <Stack spacing={3}>
                       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
@@ -3898,41 +4036,15 @@ const Certificates = () => {
                       <Button
                         size="small"
                         variant="outlined"
-                        component="label"
-                        startIcon={<UploadFile />}
-                        disabled={!Boolean(selectedElement.logoEnabled)}
-                        sx={{ borderRadius: 2, fontWeight: 800, alignSelf: 'flex-start' }}
-                      >
-                        Upload Logo
-                        <input
-                          hidden
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            try {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              const localUrl = URL.createObjectURL(file);
-                              handleUpdateElement(selectedElement.id, { logoSrc: localUrl, _logoFile: file, logoEnabled: true });
-                              toast.success('Logo berhasil dipilih');
-                            } catch (err) {
-                              toast.error(err?.response?.data?.error || err?.message || 'Gagal upload logo');
-                            } finally {
-                              try { e.target.value = ''; } catch (_) {}
-                            }
-                          }}
-                        />
-                      </Button>
-
-                      <Button
-                        size="small"
-                        variant="outlined"
                         startIcon={<Image />}
                         disabled={!Boolean(selectedElement.logoEnabled)}
-                        onClick={() => openAssetPicker('qrLogo')}
+                        onClick={() => {
+                          if (!Boolean(selectedElement.logoEnabled)) return;
+                          openAssetPicker('qrLogo');
+                        }}
                         sx={{ borderRadius: 2, fontWeight: 800, alignSelf: 'flex-start' }}
                       >
-                        Pilih dari Asset
+                        Set Logo QRCode
                       </Button>
 
                       <TextField
@@ -3972,12 +4084,16 @@ const Certificates = () => {
 
                         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
                           {(() => {
-                            const maxScale = selectedElement.logoBgEnabled ? 0.26 : 0.60;
+                            const maxScale = QR_LOGO_MAX_SCALE;
+                            const currentScaleRaw = (typeof selectedElement.logoScale === 'number' && Number.isFinite(selectedElement.logoScale))
+                              ? selectedElement.logoScale
+                              : 0.22;
+                            const currentScale = Math.max(0.1, Math.min(maxScale, currentScaleRaw));
                             return (
                               <>
                           <Slider
-                            value={typeof selectedElement.logoScale === 'number' ? selectedElement.logoScale : 0.22}
-                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { logoScale: Number(value) })}
+                            value={currentScale}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { logoScale: Math.max(0.1, Math.min(maxScale, Number(value))) })}
                             min={0.1}
                             max={maxScale}
                             step={0.01}
@@ -3986,7 +4102,7 @@ const Certificates = () => {
                           />
                           <TextField
                             type="number"
-                            value={typeof selectedElement.logoScale === 'number' ? Number(selectedElement.logoScale.toFixed(2)) : 0.22}
+                            value={Number(currentScale.toFixed(2))}
                             inputProps={{ min: 0.1, max: maxScale, step: 0.01 }}
                             onChange={(e) => {
                               if (e.target.value === '') return;
@@ -4206,357 +4322,28 @@ const Certificates = () => {
                     </Typography>
                   )}
                 </Box>
-              </Box>
-            </Paper>
+          </CertificateEditorSidebar>
 
-            {/* Panel Kanan - Canvas */}
-            <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f8fafc', borderRadius: 2, p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
-                Preview Sertifikat
-              </Typography>
-              <Paper
-                elevation={3}
-                sx={{
-                  p: 3,
-                  display: 'inline-block',
-                  borderRadius: 2,
-                  border: '1px solid',
-                  borderColor: 'divider'
-                }}
-              >
-                <Stage
-                  width={stageSize.width}
-                  height={stageSize.height}
-                  ref={setStageRef}
-                  style={{ border: '2px solid #e0e0e0', background: 'white', borderRadius: '8px' }}
-                  onMouseMove={(e) => {
-                    const stage = e.target.getStage();
-                    const p = stage?.getPointerPosition?.();
-                    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
-                      lastPointerPosRef.current = p;
-                    }
-                  }}
-                  onMouseDown={(e) => {
-                    const stage = e.target.getStage();
-                    const p = stage?.getPointerPosition?.();
-                    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
-                      lastPointerPosRef.current = p;
-                    }
-                    const tr = transformerRef.current;
-                    // Ignore clicks on transformer handles
-                    if (tr && (e.target === tr || e.target.getParent() === tr)) return;
-                    // Determine if clicked target corresponds to any registered element node
-                    const clickedNode = e.target;
-                    const elementNodes = Object.values(shapeRefs.current || {});
-                    const clickedOnElement = elementNodes.some(node => node === clickedNode || (node.findOne && node.findOne(`#${clickedNode.id()}`)));
-                    // Treat background image as empty area
-                    const clickedOnBackground = backgroundImageRef.current && clickedNode === backgroundImageRef.current;
-                    if (!clickedOnElement || clickedOnBackground || clickedNode === stage) {
-                      setSelectedElement(null);
-                      setSelectedElementIds([]);
-                      if (tr) {
-                        tr.nodes([]);
-                        tr.getLayer() && tr.getLayer().batchDraw();
-                      }
-                    }
-                  }}
-                  onTouchStart={(e) => {
-                    const stage = e.target.getStage();
-                    const p = stage?.getPointerPosition?.();
-                    if (p && typeof p.x === 'number' && typeof p.y === 'number') {
-                      lastPointerPosRef.current = p;
-                    }
-                  }}
-                >
-                  <Layer>
-                    {backgroundImageObj && (
-                      <KonvaImage
-                        image={backgroundImageObj}
-                        x={0}
-                        y={0}
-                        width={stageSize.width}
-                        height={stageSize.height}
-                        ref={backgroundImageRef}
-                      />
-                    )}
-                    {elements.map((element) => {
-                      const isSelected = selectedElement && selectedElement.id === element.id;
-                      return (
-                        <React.Fragment key={element.id}>
-                          {element.type === 'text' ? (
-                            <>
-                              {/* Optional background for text */}
-                              {element.bgColor && (
-                                <Rect
-                                  x={(element.x || 0) - (element.bgPadding || 0)}
-                                  y={(element.y || 0) - (element.bgPadding || 0)}
-                                  width={(element.width || 200) + 2 * (element.bgPadding || 0)}
-                                  height={(element.fontSize ? element.fontSize * (element.lineHeight || 1) : 32) + 2 * (element.bgPadding || 0)}
-                                  fill={element.bgColor}
-                                  cornerRadius={element.bgRadius || 0}
-                                  listening={false}
-                                />
-                              )}
-                              <Text
-                                x={element.x || 0}
-                                y={element.y || 0}
-                                text={element.text}
-                                fontSize={element.fontSize}
-                                fontFamily={element.fontFamily}
-                                fill={element.fill}
-                                fontStyle={`${element.fontStyle === 'italic' ? 'italic' : 'normal'} ${element.fontWeight === 'bold' ? 'bold' : 'normal'}`.trim()}
-                                textDecoration={element.textDecoration}
-                                letterSpacing={typeof element.letterSpacing === 'number' ? element.letterSpacing : 0}
-                                align={element.align || 'left'}
-                                width={element.width || 200}
-                                lineHeight={element.lineHeight || 1}
-                                wrap={element.wordWrap === false ? 'none' : 'word'}
-                                rotation={element.rotation || 0}
-                                ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
-                                shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
-                                shadowBlur={element.shadowBlur || 0}
-                                shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
-                                shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
-                                draggable={element.draggable}
-                                onClick={(e) => handleSelectElement(element, e)}
-                                onDragEnd={(e) => {
-                                  handleUpdateElement(element.id, { x: e.target.x(), y: e.target.y() });
-                                }}
-                                onTransformEnd={(e) => {
-                                  const node = e.target;
-                                  const scaleX = node.scaleX();
-                                  const scaleY = node.scaleY();
-                                  const prevWidth = element.width || 200;
-                                  const prevFontSize = element.fontSize || 24;
-                                  const newWidth = Math.max(50, prevWidth * scaleX);
-                                  const newFontSize = Math.max(6, Math.round(prevFontSize * scaleY));
-                                  handleUpdateElement(element.id, {
-                                    x: node.x(),
-                                    y: node.y(),
-                                    width: newWidth,
-                                    fontSize: newFontSize,
-                                    rotation: node.rotation()
-                                  });
-                                  // sync sidebar properties immediately
-                                  setTextProperties((prev) => ({
-                                    ...prev,
-                                    width: newWidth,
-                                    fontSize: newFontSize
-                                  }));
-                                  node.scaleX(1);
-                                  node.scaleY(1);
-                                }}
-                              />
-                              {/* Removed text bounding box rectangle as requested */}
-                            </>
-                          ) : element.type === 'qrcode' ? (
-                            <>
-                              <Group
-                                x={element.x || 0}
-                                y={element.y || 0}
-                                rotation={element.rotation || 0}
-                                ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
-                                draggable={element.draggable}
-                                onClick={(e) => handleSelectElement(element, e)}
-                                onDragEnd={(e) => {
-                                  handleUpdateElement(element.id, { x: e.target.x(), y: e.target.y() });
-                                }}
-                                onTransformEnd={(e) => {
-                                  const node = e.target;
-                                  const scaleX = node.scaleX();
-                                  const scaleY = node.scaleY();
-                                  const newWidth = Math.max(5, (element.width || 120) * scaleX);
-                                  const newHeight = Math.max(5, (element.height || 120) * scaleY);
-                                  handleUpdateElement(element.id, {
-                                    x: node.x(),
-                                    y: node.y(),
-                                    width: newWidth,
-                                    height: newHeight,
-                                    rotation: node.rotation()
-                                  });
-                                  node.scaleX(1);
-                                  node.scaleY(1);
-                                }}
-                                shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
-                                shadowBlur={element.shadowBlur || 0}
-                                shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
-                                shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
-                              >
-                                <Group
-                                  clipFunc={(ctx) => {
-                                    const w = element.width || 120;
-                                    const h = element.height || 120;
-                                    const r = Math.min(element.borderRadius || 0, w / 2, h / 2);
-                                    if (!r) {
-                                      ctx.rect(0, 0, w, h);
-                                      return;
-                                    }
-                                    ctx.beginPath();
-                                    ctx.moveTo(r, 0);
-                                    ctx.arcTo(w, 0, w, h, r);
-                                    ctx.arcTo(w, h, 0, h, r);
-                                    ctx.arcTo(0, h, 0, 0, r);
-                                    ctx.arcTo(0, 0, w, 0, r);
-                                    ctx.closePath();
-                                  }}
-                                >
-                                  <Rect
-                                    x={0}
-                                    y={0}
-                                    width={element.width || 120}
-                                    height={element.height || 120}
-                                    fill={element.transparentBackground ? 'rgba(0,0,0,0)' : (element.backgroundColor || '#ffffff')}
-                                    stroke={element.borderColor || '#111827'}
-                                    strokeWidth={Math.max(0, element.borderWidth || 0)}
-                                    cornerRadius={element.borderRadius || 0}
-                                    opacity={typeof element.opacity === 'number' ? element.opacity : 1}
-                                  />
-                                  {qrPreviewCache?.[element.id]?.image ? (
-                                    <KonvaImage
-                                      image={qrPreviewCache[element.id].image}
-                                      x={0}
-                                      y={0}
-                                      width={element.width || 120}
-                                      height={element.height || 120}
-                                      opacity={typeof element.opacity === 'number' ? element.opacity : 1}
-                                      listening={false}
-                                    />
-                                  ) : (
-                                    <Text
-                                      x={0}
-                                      y={0}
-                                      width={element.width || 120}
-                                      height={element.height || 120}
-                                      text="QR"
-                                      fontSize={Math.max(10, Math.round(Math.min(element.width || 120, element.height || 120) / 4))}
-                                      fontFamily="Arial"
-                                      fill="#111827"
-                                      align="center"
-                                      verticalAlign="middle"
-                                      opacity={typeof element.opacity === 'number' ? element.opacity : 1}
-                                      listening={false}
-                                    />
-                                  )}
-                                </Group>
-                              </Group>
-                            </>
-                          ) : (
-                            <>
-                              {/* Outer group handles rotation, dragging, and SHADOW so it's not clipped */}
-                              <Group
-                                x={element.x || 0}
-                                y={element.y || 0}
-                                rotation={element.rotation || 0}
-                                ref={(node) => { if (node) shapeRefs.current[element.id] = node; }}
-                                draggable={element.draggable}
-                                onClick={(e) => handleSelectElement(element, e)}
-                                onDragEnd={(e) => {
-                                  handleUpdateElement(element.id, { x: e.target.x(), y: e.target.y() });
-                                }}
-                                onTransformEnd={(e) => {
-                                  const node = e.target;
-                                  const scaleX = node.scaleX();
-                                  const scaleY = node.scaleY();
-                                  const newWidth = Math.max(5, (element.width || 100) * scaleX);
-                                  const newHeight = Math.max(5, (element.height || 100) * scaleY);
-                                  handleUpdateElement(element.id, {
-                                    x: node.x(),
-                                    y: node.y(),
-                                    width: newWidth,
-                                    height: newHeight,
-                                    rotation: node.rotation()
-                                  });
-                                  node.scaleX(1);
-                                  node.scaleY(1);
-                                }}
-                                shadowColor={element.shadowColor || 'rgba(0,0,0,0)'}
-                                shadowBlur={element.shadowBlur || 0}
-                                shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
-                                shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
-                              >
-                                {/* Inner clipped group for rounded corners and border */}
-                                <Group
-                                  clipFunc={element.borderRadius ? (ctx) => {
-                                    const w = element.width || 100;
-                                    const h = element.height || 100;
-                                    const r = Math.min(element.borderRadius || 0, w / 2, h / 2);
-                                    const x = 0, y = 0;
-                                    ctx.beginPath();
-                                    ctx.moveTo(x + r, y);
-                                    ctx.arcTo(x + w, y, x + w, y + h, r);
-                                    ctx.arcTo(x + w, y + h, x, y + h, r);
-                                    ctx.arcTo(x, y + h, x, y, r);
-                                    ctx.arcTo(x, y, x + w, y, r);
-                                    ctx.closePath();
-                                  } : undefined}
-                                >
-                                  <KonvaImage
-                                    image={imageCache[element.id] || null}
-                                    x={0}
-                                    y={0}
-                                    width={element.width || 100}
-                                    height={element.height || 100}
-                                    opacity={typeof element.opacity === 'number' ? element.opacity : 1}
-                                    listening={true}
-                                  />
-                                  {(element.borderWidth || 0) > 0 && (
-                                    <Rect
-                                      x={0}
-                                      y={0}
-                                      width={element.width || 100}
-                                      height={element.height || 100}
-                                      stroke={element.borderColor || '#000'}
-                                      strokeWidth={element.borderWidth || 1}
-                                      cornerRadius={element.borderRadius || 0}
-                                      listening={false}
-                                    />
-                                  )}
-                                </Group>
-                              </Group>
-                              {/* Removed image bounding box rectangle */}
-                            </>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                    {/* Transformer for selected element (text or image) */}
-                    <Transformer
-                      ref={transformerRef}
-                      rotateEnabled
-                      keepRatio={selectedElement?.type === 'image' ? lockImageRatio : false}
-                      boundBoxFunc={(oldBox, newBox) => {
-                        const MIN_SIZE = 10;
-                        if (newBox.width < MIN_SIZE || newBox.height < MIN_SIZE) {
-                          return oldBox;
-                        }
-                        return newBox;
-                      }}
-                      enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center', 'middle-left', 'middle-right']}
-                      shouldOverdrawWholeArea={true}
-                    />
-                  </Layer>
-                </Stage>
-              </Paper>
-            </Box>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, py: 2 }}>
-            <Button
-              onClick={handleCloseEditor}
-              sx={{ borderRadius: 2 }}
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={handleSaveTemplate}
-              variant="contained"
-              startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <Save />}
-              disabled={saving}
-              sx={{ borderRadius: 2, px: 3 }}
-            >
-              {saving ? 'Menyimpan...' : 'Simpan Template'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+          <CertificateEditorCanvas
+            stageSize={stageSize}
+            setStageRef={setStageRef}
+            lastPointerPosRef={lastPointerPosRef}
+            transformerRef={transformerRef}
+            shapeRefs={shapeRefs}
+            backgroundImageObj={backgroundImageObj}
+            backgroundImageRef={backgroundImageRef}
+            elements={elements}
+            selectedElement={selectedElement}
+            imageCache={imageCache}
+            qrPreviewCache={qrPreviewCache}
+            lockImageRatio={lockImageRatio}
+            handleSelectElement={handleSelectElement}
+            handleUpdateElement={handleUpdateElement}
+            setSelectedElement={setSelectedElement}
+            setSelectedElementIds={setSelectedElementIds}
+            setTextProperties={setTextProperties}
+          />
+        </CertificateEditorDialog>
 
         {/* Confirm delete element(s) */}
         <Dialog
