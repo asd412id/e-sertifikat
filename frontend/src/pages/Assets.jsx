@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -67,6 +68,10 @@ const Assets = () => {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [selectedAssetIds, setSelectedAssetIds] = useState([]);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState(null);
 
@@ -80,6 +85,7 @@ const Assets = () => {
     try {
       setLoading(true);
       setError('');
+      setSelectedAssetIds([]);
       const res = await api.get('/assets', {
         params: {
           page,
@@ -114,6 +120,39 @@ const Assets = () => {
   useEffect(() => {
     fetchAssets(1);
   }, []);
+
+  const assetIdentifier = (a) => a?.uuid || a?.fileName || a?.path || '';
+  const selectedSet = useMemo(() => new Set(selectedAssetIds), [selectedAssetIds]);
+  const selectableAssets = useMemo(() => (Array.isArray(assets) ? assets : []).filter(a => Boolean(assetIdentifier(a))), [assets]);
+  const selectedAssets = useMemo(() => selectableAssets.filter(a => selectedSet.has(assetIdentifier(a))), [selectableAssets, selectedSet]);
+  const anySelected = selectedAssetIds.length > 0;
+  const allSelectedOnPage = selectableAssets.length > 0 && selectableAssets.every(a => selectedSet.has(assetIdentifier(a)));
+  const noneSelectedOnPage = selectableAssets.every(a => !selectedSet.has(assetIdentifier(a)));
+
+  const toggleSelectAsset = (asset, checked) => {
+    const id = assetIdentifier(asset);
+    if (!id) return;
+    setSelectedAssetIds((prev) => {
+      const cur = Array.isArray(prev) ? prev : [];
+      const exists = cur.includes(id);
+      if (checked === true && !exists) return [...cur, id];
+      if (checked === false && exists) return cur.filter(x => x !== id);
+      return exists ? cur.filter(x => x !== id) : [...cur, id];
+    });
+  };
+
+  const selectAllOnPage = () => {
+    setSelectedAssetIds((prev) => {
+      const cur = Array.isArray(prev) ? prev : [];
+      const curSet = new Set(cur);
+      for (const a of selectableAssets) curSet.add(assetIdentifier(a));
+      return Array.from(curSet);
+    });
+  };
+
+  const selectNone = () => {
+    setSelectedAssetIds([]);
+  };
 
   const openDeleteDialog = (asset) => {
     setSelectedAsset(asset || null);
@@ -167,6 +206,35 @@ const Assets = () => {
 
   const previewUsedBy = Array.isArray(previewAsset?.usedBy) ? previewAsset.usedBy : [];
   const previewUrl = toAssetUrl(previewAsset?.path);
+
+  const bulkUsedCount = selectedAssets.reduce((sum, a) => sum + (Array.isArray(a?.usedBy) ? a.usedBy.length : 0), 0);
+  const bulkForce = bulkUsedCount > 0;
+
+  const doBulkDelete = async () => {
+    if (!selectedAssets.length) {
+      setBulkDeleteDialogOpen(false);
+      return;
+    }
+
+    try {
+      setBulkDeleting(true);
+      for (const a of selectedAssets) {
+        if (a && a.exists === false) continue;
+        const id = a?.uuid || a?.fileName;
+        if (!id) continue;
+        const qs = bulkForce ? '?force=true' : '';
+        await api.delete(`/assets/${encodeURIComponent(id)}${qs}`);
+      }
+      toast.success(`Berhasil menghapus ${selectedAssets.length} asset`);
+      setBulkDeleteDialogOpen(false);
+      setSelectedAssetIds([]);
+      await fetchAssets(pagination.currentPage);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || e?.message || 'Gagal menghapus beberapa asset');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   return (
     <Layout>
@@ -223,6 +291,30 @@ const Assets = () => {
               Total: {pagination.totalCount}
             </Typography>
           </Stack>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mt: 1.5 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button size="small" variant="outlined" onClick={selectAllOnPage} disabled={loading || allSelectedOnPage}>
+                Select All
+              </Button>
+              <Button size="small" variant="outlined" onClick={selectNone} disabled={loading || selectedAssetIds.length === 0}>
+                None
+              </Button>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                Terpilih: {selectedAssetIds.length}
+              </Typography>
+            </Stack>
+
+            <Button
+              size="small"
+              variant="contained"
+              color="error"
+              disabled={loading || !anySelected}
+              onClick={() => setBulkDeleteDialogOpen(true)}
+            >
+              Hapus Terpilih
+            </Button>
+          </Stack>
         </Box>
 
         {loading ? (
@@ -241,6 +333,8 @@ const Assets = () => {
                   const url = toAssetUrl(a.path);
                   const usedCount = Array.isArray(a.usedBy) ? a.usedBy.length : 0;
                   const ext = getExtLabel(a.fileName);
+                  const id = assetIdentifier(a);
+                  const checked = selectedSet.has(id);
 
                   return (
                     <Grid item xs={12} sm={6} md={4} lg={3} key={a.uuid || a.path}>
@@ -272,6 +366,26 @@ const Assets = () => {
                             position: 'relative'
                           }}
                         >
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: 10,
+                              bottom: 10,
+                              bgcolor: 'rgba(255,255,255,0.92)',
+                              border: '1px solid',
+                              borderColor: 'divider',
+                              borderRadius: 2,
+                              px: 0.25
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Checkbox
+                              size="small"
+                              checked={checked}
+                              onChange={(e) => toggleSelectAsset(a, e.target.checked)}
+                            />
+                          </Box>
+
                           {url ? (
                             <Box
                               component="img"
@@ -572,6 +686,48 @@ const Assets = () => {
             onClick={() => doDeleteAsset({ force: usedBy.length > 0 })}
           >
             {deleting ? 'Menghapus...' : (usedBy.length ? 'Hapus Paksa' : 'Hapus')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={bulkDeleteDialogOpen}
+        onClose={() => {
+          if (bulkDeleting) return;
+          setBulkDeleteDialogOpen(false);
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ pr: 6 }}>
+          Hapus {selectedAssetIds.length} Asset
+          <IconButton
+            onClick={() => {
+              if (bulkDeleting) return;
+              setBulkDeleteDialogOpen(false);
+            }}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+            disabled={bulkDeleting}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Alert severity={bulkForce ? 'warning' : 'info'}>
+              {bulkForce
+                ? `Sebagian asset terpilih sedang digunakan oleh template. Sistem akan memakai mode hapus paksa.`
+                : 'Asset terpilih tidak terdeteksi dipakai template.'}
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              Terpilih: {selectedAssetIds.length}
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkDeleteDialogOpen(false)} disabled={bulkDeleting}>Batal</Button>
+          <Button variant="contained" color="error" disabled={bulkDeleting} onClick={doBulkDelete}>
+            {bulkDeleting ? 'Menghapus...' : (bulkForce ? 'Hapus Paksa' : 'Hapus')}
           </Button>
         </DialogActions>
       </Dialog>

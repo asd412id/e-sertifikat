@@ -52,7 +52,8 @@ async function start() {
     await fastify.register(require('./routes/assets'), { prefix: '/api/assets' });
 
     // Initialize database
-    const { sequelize } = require('./models');
+    const { sequelize, Event } = require('./models');
+    const AssetService = require('./services/AssetService');
 
     // Test database connection
     await sequelize.authenticate();
@@ -73,6 +74,44 @@ async function start() {
 
     await fastify.listen({ port, host });
     console.log(`Server running on http://${host}:${port}`);
+
+    const autoBackfillEnabled = String(process.env.AUTO_ASSET_BACKFILL_ON_STARTUP || 'true').toLowerCase() !== 'false';
+    if (autoBackfillEnabled) {
+      const startupDelayMs = Math.max(0, parseInt(process.env.AUTO_ASSET_BACKFILL_STARTUP_DELAY_MS, 10) || 1000);
+      const perUserDelayMs = Math.max(0, parseInt(process.env.AUTO_ASSET_BACKFILL_USER_DELAY_MS, 10) || 100);
+
+      setTimeout(async () => {
+        try {
+          const rows = await Event.findAll({
+            where: { isActive: true },
+            attributes: ['userId'],
+            group: ['userId'],
+            raw: true
+          });
+          const userIds = Array.from(new Set((rows || []).map((r) => r?.userId).filter((x) => x != null)));
+
+          console.log(`[asset-backfill] Starting auto backfill for ${userIds.length} users`);
+
+          for (let i = 0; i < userIds.length; i += 1) {
+            const userId = userIds[i];
+            try {
+              const result = await AssetService.backfillUserAssetsFromTemplates(userId);
+              console.log(`[asset-backfill] userId=${userId} created=${result.createdCount} skipped=${result.skippedCount} missing=${result.missingFilesCount}`);
+            } catch (e) {
+              console.log(`[asset-backfill] userId=${userId} failed: ${e?.message || e}`);
+            }
+
+            if (perUserDelayMs > 0 && i < userIds.length - 1) {
+              await new Promise((resolve) => setTimeout(resolve, perUserDelayMs));
+            }
+          }
+
+          console.log('[asset-backfill] Completed auto backfill');
+        } catch (e) {
+          console.log(`[asset-backfill] Failed to run auto backfill: ${e?.message || e}`);
+        }
+      }, startupDelayMs);
+    }
 
   } catch (error) {
     console.error('Error starting server:', error);

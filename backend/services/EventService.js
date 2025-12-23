@@ -391,22 +391,8 @@ class EventService {
         });
       }
 
-      // Delete related certificate templates and their background images
+      // Delete related certificate templates (do not delete uploaded assets automatically)
       for (const template of event.certificateTemplates) {
-        // Delete background image file if it exists
-        if (template.design && template.design.background) {
-          const backgroundPath = template.design.background;
-          if (backgroundPath.startsWith('/uploads/')) {
-            const fileName = backgroundPath.replace('/uploads/', '');
-            const filePath = path.join(process.env.UPLOAD_DIR || './uploads', fileName);
-            try {
-              await fs.unlink(filePath);
-            } catch (error) {
-              // Ignore error if file doesn't exist
-              console.log(`Failed to delete background image: ${filePath}`);
-            }
-          }
-        }
         // Delete template
         await template.destroy();
       }
