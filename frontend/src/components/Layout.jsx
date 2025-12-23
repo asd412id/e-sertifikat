@@ -24,6 +24,7 @@ import {
   Menu as MenuIcon,
   Dashboard,
   Event,
+  Verified,
   AccountCircle,
   Logout,
   Settings,
@@ -47,6 +48,7 @@ const Layout = ({ children }) => {
   const menuItems = [
     { text: 'Dasbor', icon: <Dashboard />, path: '/dashboard' },
     { text: 'Kegiatan', icon: <Event />, path: '/events' },
+    { text: 'Sertifikat Terbit', icon: <Verified />, path: '/certificates/issued' },
   ];
 
   const handleDrawerToggle = () => {

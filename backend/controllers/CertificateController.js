@@ -1,17 +1,294 @@
 const CertificateService = require('../services/CertificateService');
-const { Event, Participant, CertificateTemplate } = require('../models');
+const { Event, Participant, CertificateTemplate, CertificateVerification } = require('../models');
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const archiver = require('archiver');
 const { Op, where, literal } = require('sequelize');
 const crypto = require('crypto');
+const QRCode = require('qrcode');
+const sharp = require('sharp');
+
+async function incrementVerificationDownloadCount({ templateUuid, participantUuid }) {
+  try {
+    if (!templateUuid || !participantUuid) return;
+    const rec = await CertificateVerification.findOne({
+      where: { templateUuid: String(templateUuid), participantUuid: String(participantUuid) }
+    });
+    if (!rec) return;
+    if (rec.status === 'deleted') return;
+    await rec.update({
+      downloadCount: (parseInt(rec.downloadCount, 10) || 0) + 1,
+      lastDownloadedAt: new Date()
+    });
+  } catch (_) {
+    // ignore
+  }
+}
+
+function parseHexColor(color, fallback = { r: 255, g: 255, b: 255 }) {
+  try {
+    const c = String(color || '').trim();
+    const m = /^#?([0-9a-f]{6})$/i.exec(c);
+    if (!m) return fallback;
+    const hex = m[1];
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    if (![r, g, b].every((v) => Number.isFinite(v))) return fallback;
+    return { r, g, b };
+  } catch (_) {
+    return fallback;
+  }
+}
+
+async function resolveUploadImageBuffer(src) {
+  try {
+    const s = String(src || '').trim();
+    if (!s) return null;
+    if (s.startsWith('/uploads/')) {
+      const rel = s.replace('/uploads/', '');
+      const filePath = path.join(path.resolve(process.env.UPLOAD_DIR || './uploads'), rel);
+      if (!fsSync.existsSync(filePath)) return null;
+      return fsSync.readFileSync(filePath);
+    }
+    if (s.startsWith('http://localhost:')) {
+      const marker = '/api/uploads/';
+      if (s.includes(marker)) {
+        const rel = s.split(marker)[1];
+        const filePath = path.join(path.resolve(process.env.UPLOAD_DIR || './uploads'), rel);
+        if (!fsSync.existsSync(filePath)) return null;
+        return fsSync.readFileSync(filePath);
+      }
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
 
 class CertificateController {
 
+  async previewQrCode(request, reply) {
+    try {
+      const { url, size, transparentBackground, backgroundColor, logoEnabled, logoSrc, logoScale, logoBgEnabled, logoBgColor } = request.body || {};
+      const u = String(url || '').trim();
+      if (!u) {
+        return reply.status(400).send({ error: 'url is required' });
+      }
+
+      const sRaw = parseInt(size, 10);
+      const side = Number.isFinite(sRaw) ? Math.max(120, Math.min(600, sRaw)) : 260;
+      const bgTransparent = Boolean(transparentBackground);
+      const bgColor = (typeof backgroundColor === 'string' && backgroundColor.trim()) ? backgroundColor.trim() : '#ffffff';
+      const wantsLogo = Boolean(logoEnabled) && typeof logoSrc === 'string' && logoSrc.trim().length > 0;
+
+      const qrOptions = {
+        errorCorrectionLevel: wantsLogo ? 'H' : 'M',
+        margin: wantsLogo ? 2 : 0,
+        width: side,
+        color: {
+          dark: '#000000',
+          light: bgTransparent ? '#00000000' : bgColor
+        }
+      };
+      if (!wantsLogo) {
+        const png = await QRCode.toBuffer(u, qrOptions);
+        reply.header('Content-Type', 'image/png');
+        return reply.send(png);
+      }
+
+      let qrBuffer = await QRCode.toBuffer(u, qrOptions);
+      const meta = await sharp(qrBuffer).metadata().catch(() => null);
+      const qrW = Math.max(1, parseInt(meta?.width, 10) || side);
+      const qrH = Math.max(1, parseInt(meta?.height, 10) || side);
+      const qrSide = Math.max(1, Math.min(qrW, qrH));
+
+      const logoScaleRaw = (typeof logoScale === 'number' && Number.isFinite(logoScale)) ? logoScale : 0.22;
+      const bgEnabled = Boolean(logoBgEnabled);
+      const maxScale = bgEnabled ? 0.26 : 0.60;
+      const ls = Math.max(0.1, Math.min(maxScale, logoScaleRaw));
+      const logoSizePx = Math.max(12, Math.round(qrSide * ls));
+
+      const logoBuf = await resolveUploadImageBuffer(logoSrc);
+      if (logoBuf && logoBuf.length) {
+        const pad = Math.max(4, Math.round(logoSizePx * 0.12));
+        const boxSize = Math.min(qrSide, logoSizePx + pad * 2);
+        let bgBox = null;
+        if (bgEnabled) {
+          const bg = (typeof logoBgColor === 'string' && logoBgColor.trim()) ? logoBgColor.trim() : '#ffffff';
+          const { r, g, b } = parseHexColor(bg, { r: 255, g: 255, b: 255 });
+          bgBox = await sharp({
+            create: {
+              width: boxSize,
+              height: boxSize,
+              channels: 4,
+              background: { r, g, b, alpha: 1 }
+            }
+          }).png().toBuffer();
+        }
+
+        const resizedLogo = await sharp(logoBuf)
+          .resize(logoSizePx, logoSizePx, {
+            fit: 'contain',
+            withoutEnlargement: true,
+            background: { r: 255, g: 255, b: 255, alpha: 0 }
+          })
+          .png()
+          .toBuffer();
+
+        const composites = [];
+        if (bgBox) composites.push({ input: bgBox, gravity: 'center' });
+        let logoOpacity = 1;
+        if (!bgEnabled) {
+          const t = Math.max(0, Math.min(1, (ls - 0.20) / 0.40));
+          logoOpacity = Math.max(0.25, 1 - 0.75 * t);
+        }
+        composites.push({ input: resizedLogo, gravity: 'center', opacity: logoOpacity });
+        qrBuffer = await sharp(qrBuffer).composite(composites).png().toBuffer();
+      }
+
+      reply.header('Content-Type', 'image/png');
+      return reply.send(qrBuffer);
+    } catch (error) {
+      reply.status(500).send({ error: error.message });
+    }
+  }
+
+  async getIssuedCertificates(request, reply) {
+    try {
+      const { page = 1, limit = 10, search = '', eventId = '', templateId = '', status = '' } = request.query || {};
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+      const offset = (pageNum - 1) * limitNum;
+
+      const eventWhere = { userId: request.user.userId, isActive: true };
+      if (eventId) {
+        eventWhere.uuid = String(eventId);
+      }
+      const events = await Event.findAll({ where: eventWhere, attributes: ['uuid', 'title'] });
+      const allowedEventUuid = new Set((events || []).map(e => e.uuid));
+
+      const whereCondition = {};
+      if (status) {
+        whereCondition.status = String(status);
+      } else {
+        whereCondition.status = { [Op.ne]: 'deleted' };
+      }
+
+      if (eventId) {
+        whereCondition.eventUuid = String(eventId);
+      } else {
+        whereCondition.eventUuid = { [Op.in]: Array.from(allowedEventUuid) };
+      }
+
+      if (templateId) {
+        whereCondition.templateUuid = String(templateId);
+      }
+
+      const q = String(search || '').trim();
+      if (q) {
+        const like = `%${q}%`;
+        whereCondition[Op.or] = [
+          { eventTitle: { [Op.iLike]: like } },
+          { templateName: { [Op.iLike]: like } },
+          where(literal('CAST("participantUuid" AS TEXT)'), { [Op.iLike]: like }),
+          where(literal('CAST("token" AS TEXT)'), { [Op.iLike]: like }),
+          where(literal('CAST("templateUuid" AS TEXT)'), { [Op.iLike]: like }),
+          where(literal('CAST("eventUuid" AS TEXT)'), { [Op.iLike]: like }),
+          where(literal('CAST("fields" AS TEXT)'), { [Op.iLike]: like })
+        ];
+      }
+
+      const { count, rows } = await CertificateVerification.findAndCountAll({
+        where: whereCondition,
+        order: [['updatedAt', 'DESC']],
+        limit: limitNum,
+        offset
+      });
+
+      reply.send({
+        success: true,
+        data: {
+          verifications: (rows || []).map(r => r.toJSON()),
+          totalCount: count,
+          totalPages: Math.ceil(count / limitNum) || 1,
+          currentPage: pageNum,
+          limit: limitNum,
+          events: (events || []).map(e => e.toJSON())
+        }
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error.message });
+    }
+  }
+
+  async approveIssuedCertificate(request, reply) {
+    try {
+      const { token } = request.params;
+      const rec = await CertificateVerification.findOne({ where: { token: String(token) } });
+      if (!rec) return reply.status(404).send({ error: 'Certificate not found' });
+
+      const eventUuid = rec.eventUuid ? String(rec.eventUuid) : '';
+      if (!eventUuid) return reply.status(403).send({ error: 'Forbidden' });
+      const event = await Event.findOne({ where: { uuid: eventUuid, userId: request.user.userId, isActive: true } });
+      if (!event) return reply.status(403).send({ error: 'Forbidden' });
+
+      await rec.update({
+        status: 'approved',
+        isRevoked: false,
+        revokedAt: null
+      });
+      reply.send({ success: true, data: { verification: rec.toJSON() } });
+    } catch (error) {
+      reply.status(500).send({ error: error.message });
+    }
+  }
+
+  async revokeIssuedCertificate(request, reply) {
+    try {
+      const { token } = request.params;
+      const rec = await CertificateVerification.findOne({ where: { token: String(token) } });
+      if (!rec) return reply.status(404).send({ error: 'Certificate not found' });
+
+      const eventUuid = rec.eventUuid ? String(rec.eventUuid) : '';
+      if (!eventUuid) return reply.status(403).send({ error: 'Forbidden' });
+      const event = await Event.findOne({ where: { uuid: eventUuid, userId: request.user.userId, isActive: true } });
+      if (!event) return reply.status(403).send({ error: 'Forbidden' });
+
+      await rec.update({
+        status: 'revoked',
+        isRevoked: true,
+        revokedAt: new Date()
+      });
+      reply.send({ success: true, data: { verification: rec.toJSON() } });
+    } catch (error) {
+      reply.status(500).send({ error: error.message });
+    }
+  }
+
+  async deleteIssuedCertificate(request, reply) {
+    try {
+      const { token } = request.params;
+      const rec = await CertificateVerification.findOne({ where: { token: String(token) } });
+      if (!rec) return reply.status(404).send({ error: 'Certificate not found' });
+
+      const eventUuid = rec.eventUuid ? String(rec.eventUuid) : '';
+      if (!eventUuid) return reply.status(403).send({ error: 'Forbidden' });
+      const event = await Event.findOne({ where: { uuid: eventUuid, userId: request.user.userId, isActive: true } });
+      if (!event) return reply.status(403).send({ error: 'Forbidden' });
+
+      const deletedToken = rec.token;
+      await rec.destroy();
+      reply.send({ success: true, data: { token: deletedToken } });
+    } catch (error) {
+      reply.status(500).send({ error: error.message });
+    }
+  }
+
   async verifyCertificate(request, reply) {
     try {
-      const { template, participant, sig } = request.query || {};
+      const { template, participant, sig, token } = request.query || {};
       const format = String((request.query || {}).format || '').toLowerCase();
 
       const wantsJson = format === 'json'
@@ -122,16 +399,6 @@ class CertificateController {
         return reply.status(statusCode).send(html);
       };
 
-      if (!template || !participant || !sig) {
-        const payload = {
-          success: false,
-          error: 'Missing required query parameters'
-        };
-        return wantsJson
-          ? reply.status(400).send(payload)
-          : sendHtml(400, payload);
-      }
-
       const secret = String(process.env.CERT_VERIFY_SECRET || '').trim();
       if (!secret) {
         const payload = {
@@ -141,6 +408,59 @@ class CertificateController {
         return wantsJson
           ? reply.status(500).send(payload)
           : sendHtml(500, payload);
+      }
+
+      // New mode: token-based verification using immutable snapshots
+      if (token) {
+        if (!sig) {
+          const out = { success: false, error: 'Missing required query parameters' };
+          return wantsJson ? reply.status(400).send(out) : sendHtml(400, out);
+        }
+
+        const expectedSig = crypto.createHmac('sha256', secret).update(String(token)).digest('hex');
+        if (String(sig) !== expectedSig) {
+          const out = { success: true, data: { valid: false, reason: 'Invalid signature' } };
+          return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+        }
+
+        const rec = await CertificateVerification.findOne({ where: { token: String(token) } });
+        if (!rec) {
+          const out = { success: true, data: { valid: false, reason: 'Certificate not found' } };
+          return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+        }
+
+        if (rec.status === 'deleted') {
+          const out = { success: true, data: { valid: false, reason: 'Certificate deleted' } };
+          return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+        }
+
+        if (rec.status === 'revoked' || rec.isRevoked) {
+          const out = { success: true, data: { valid: false, reason: 'Certificate revoked' } };
+          return wantsJson ? reply.status(200).send(out) : sendHtml(200, out);
+        }
+
+        const out = {
+          success: true,
+          data: {
+            valid: true,
+            templateUuid: rec.templateUuid || '',
+            participantUuid: rec.participantUuid || '',
+            event: rec.eventTitle ? { title: rec.eventTitle } : null,
+            fields: Array.isArray(rec.fields) ? rec.fields : []
+          }
+        };
+        return wantsJson ? reply.send(out) : sendHtml(200, out);
+      }
+
+      // Legacy mode: template+participant+sig
+      if (!template || !participant || !sig) {
+        const payload = {
+          success: false,
+          error: 'Missing required query parameters'
+        };
+        return wantsJson
+          ? reply.status(400).send(payload)
+          : sendHtml(400, payload);
       }
 
       const payload = { templateUuid: String(template), participantUuid: String(participant) };
@@ -652,6 +972,11 @@ class CertificateController {
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
       const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
 
+      await incrementVerificationDownloadCount({
+        templateUuid: template?.uuid,
+        participantUuid: participant?.uuid
+      });
+
       const participantName = participant.data?.nama || participant.data?.name || 'participant';
       const sanitizedName = String(participantName)
         .replace(/[^-\u007E\s-]/g, '')
@@ -774,6 +1099,11 @@ class CertificateController {
 
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
       const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
+
+      await incrementVerificationDownloadCount({
+        templateUuid: template?.uuid,
+        participantUuid: participant?.uuid
+      });
 
       const participantName = participant.data?.nama || participant.data?.name || 'participant';
       const sanitizedName = String(participantName).replace(/[^-\u007E\s-]/g, '').replace(/[^\w\s-]/g, '_').replace(/\s+/g, '_').substring(0, 50);
@@ -943,6 +1273,11 @@ class CertificateController {
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
       const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
 
+      await incrementVerificationDownloadCount({
+        templateUuid: template?.uuid,
+        participantUuid: participant?.uuid
+      });
+
       if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer)) {
         return reply.status(500).send({ error: 'Failed to generate PDF' });
       }
@@ -1031,6 +1366,11 @@ class CertificateController {
       // Use unified single/bulk path
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
       const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
+
+      await incrementVerificationDownloadCount({
+        templateUuid: template?.uuid,
+        participantUuid: participant?.uuid
+      });
 
       // Set headers for PDF download
       const participantName = participant.data?.name || participant.data?.nama || 'participant';

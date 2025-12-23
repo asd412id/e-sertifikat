@@ -11,6 +11,7 @@ import Events from './pages/Events';
 import Participants from './pages/Participants';
 import Certificates from './pages/Certificates';
 import Profile from './pages/Profile';
+import IssuedCertificates from './pages/IssuedCertificates';
 import { CircularProgress, Box } from '@mui/material';
 
 function App() {
@@ -72,6 +73,14 @@ function App() {
         element={
           <ProtectedRoute>
             <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/certificates/issued"
+        element={
+          <ProtectedRoute>
+            <IssuedCertificates />
           </ProtectedRoute>
         }
       />

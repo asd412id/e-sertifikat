@@ -43,6 +43,7 @@ import {
   Delete,
   Image,
   QrCode2,
+  UploadFile,
   TextFields,
   Save,
   ArrowBack,
@@ -72,6 +73,7 @@ import { Stage, Layer, Text, Image as KonvaImage, Transformer, Rect, Group } fro
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { certificateService, eventService, participantService } from '../services/dataService';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const Certificates = () => {
@@ -250,6 +252,8 @@ const Certificates = () => {
   const shapeRefs = useRef({});
   const lastPointerPosRef = useRef(null);
   const [selectedElement, setSelectedElement] = useState(null);
+  const [qrPreviewCache, setQrPreviewCache] = useState({});
+
   const [selectedElementIds, setSelectedElementIds] = useState([]);
   const [elements, setElements] = useState([]);
   const [pages, setPages] = useState([]);
@@ -259,6 +263,105 @@ const Certificates = () => {
   const backgroundImageRef = useRef(null);
   const [backgroundImageFile, setBackgroundImageFile] = useState(null);
   const [stageSize, setStageSize] = useState({ width: 842, height: 595 }); // A4 landscape
+
+  const buildQrPreviewKey = (el) => {
+    const w = Math.round(Number(el?.width || 120));
+    const h = Math.round(Number(el?.height || 120));
+    return JSON.stringify({
+      w,
+      h,
+      bg: el?.backgroundColor || '',
+      tbg: Boolean(el?.transparentBackground),
+      le: Boolean(el?.logoEnabled),
+      ls: el?.logoSrc || '',
+      sc: typeof el?.logoScale === 'number' ? Number(el.logoScale.toFixed(3)) : 0.22,
+      lbg: Boolean(el?.logoBgEnabled),
+      lbgc: el?.logoBgColor || ''
+    });
+  };
+
+  const fetchQrPreview = async (el) => {
+    try {
+      if (!el?.id || el?.type !== 'qrcode') return;
+      const key = buildQrPreviewKey(el);
+      const cached = qrPreviewCache?.[el.id];
+      if (cached?.key === key && cached?.image) return;
+
+      const size = Math.round(Math.max(Number(el.width || 120), Number(el.height || 120)));
+      const url = `${window.location.origin}/api/certificates/verify?token=PREVIEW&sig=PREVIEW`;
+
+      const res = await api.post(
+        '/certificates/qr-preview',
+        {
+          url,
+          size,
+          transparentBackground: Boolean(el.transparentBackground),
+          backgroundColor: el.backgroundColor || '#ffffff',
+          logoEnabled: Boolean(el.logoEnabled),
+          logoSrc: el.logoSrc || '',
+          logoScale: typeof el.logoScale === 'number' ? el.logoScale : 0.22,
+          logoBgEnabled: Boolean(el.logoBgEnabled),
+          logoBgColor: el.logoBgColor || ''
+        },
+        {
+          responseType: 'arraybuffer',
+          timeout: 30000
+        }
+      );
+
+      const blob = new Blob([res.data], { type: 'image/png' });
+      const objectUrl = URL.createObjectURL(blob);
+      const img = new window.Image();
+      img.onload = () => {
+        setQrPreviewCache((prev) => {
+          const prevRec = prev?.[el.id];
+          if (prevRec?.objectUrl && prevRec.objectUrl !== objectUrl) {
+            try { URL.revokeObjectURL(prevRec.objectUrl); } catch (_) {}
+          }
+          return { ...(prev || {}), [el.id]: { key, image: img, objectUrl } };
+        });
+      };
+      img.onerror = () => {
+        try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+      };
+      img.src = objectUrl;
+    } catch (_) {
+      // ignore preview failures
+    }
+  };
+
+  useEffect(() => {
+    if (!openDialog) return;
+    if (selectedElement?.type !== 'qrcode') return;
+    fetchQrPreview(selectedElement);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDialog, selectedElement?.id, selectedElement?.type, selectedElement?.width, selectedElement?.height, selectedElement?.backgroundColor, selectedElement?.transparentBackground, selectedElement?.logoEnabled, selectedElement?.logoSrc, selectedElement?.logoScale]);
+
+  useEffect(() => {
+    if (!openDialog) return;
+    const list = Array.isArray(elements) ? elements : [];
+    const qrs = list.filter((el) => el && el.type === 'qrcode' && el.id);
+    if (!qrs.length) return;
+    qrs.forEach((el) => {
+      const key = buildQrPreviewKey(el);
+      const cached = qrPreviewCache?.[el.id];
+      if (cached?.key === key && cached?.image) return;
+      fetchQrPreview(el);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDialog, elements]);
+
+  useEffect(() => {
+    if (openDialog) return;
+    const cache = qrPreviewCache || {};
+    Object.values(cache).forEach((rec) => {
+      if (rec?.objectUrl) {
+        try { URL.revokeObjectURL(rec.objectUrl); } catch (_) {}
+      }
+    });
+    setQrPreviewCache({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openDialog]);
 
   // Image cache for element previews
   const [imageCache, setImageCache] = useState({}); // { [elementId]: HTMLImageElement }
@@ -1043,7 +1146,12 @@ const Certificates = () => {
       rotation: 0,
       draggable: true,
       backgroundColor: '#ffffff',
-      transparentBackground: false
+      transparentBackground: false,
+      logoEnabled: false,
+      logoSrc: null,
+      logoScale: 0.22,
+      logoBgEnabled: false,
+      logoBgColor: '#ffffff'
     };
     setElements((prev) => [...prev, newQr]);
     setSelectedElement(newQr);
@@ -2274,7 +2382,7 @@ const Certificates = () => {
           <DialogTitle sx={{ fontWeight: 'bold' }}>Salin Template Sertifikat</DialogTitle>
           <DialogContent sx={{ pt: 1.5 }}>
             <FormControl fullWidth size="small" margin="dense">
-              <InputLabel id="copy-target-event-label" shrink>
+              <InputLabel id="copy-target-event-label">
                 Kegiatan Tujuan
               </InputLabel>
               <Select
@@ -2300,7 +2408,6 @@ const Certificates = () => {
               onChange={(e) => setCopyTemplateName(e.target.value)}
               autoFocus
               margin="dense"
-              InputLabelProps={{ shrink: true }}
             />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -2464,7 +2571,8 @@ const Certificates = () => {
                   flex: 1,
                   overflow: 'auto',
                   pt: 2,
-                  pr: 1
+                  pr: 1,
+                  pb: 6
                 }}
               >
                 <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
@@ -3347,6 +3455,130 @@ const Certificates = () => {
                         Reset Background
                       </Button>
 
+                      <Divider />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                        Logo QR
+                      </Typography>
+                      <FormControlLabel
+                        control={(
+                          <Switch
+                            checked={Boolean(selectedElement.logoEnabled)}
+                            onChange={(e) => handleUpdateElement(selectedElement.id, { logoEnabled: e.target.checked })}
+                          />
+                        )}
+                        label="Tampilkan Logo"
+                      />
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        component="label"
+                        startIcon={<UploadFile />}
+                        disabled={!Boolean(selectedElement.logoEnabled)}
+                        sx={{ borderRadius: 2, fontWeight: 800, alignSelf: 'flex-start' }}
+                      >
+                        Upload Logo
+                        <input
+                          hidden
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            try {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const res = await certificateService.uploadBackground(file);
+                              const url = res?.data?.url || res?.url || res?.data?.data?.url;
+                              if (!url) {
+                                toast.error('Gagal upload logo');
+                                return;
+                              }
+                              handleUpdateElement(selectedElement.id, { logoSrc: url, logoEnabled: true });
+                              toast.success('Logo berhasil diupload');
+                            } catch (err) {
+                              toast.error(err?.response?.data?.error || err?.message || 'Gagal upload logo');
+                            } finally {
+                              try { e.target.value = ''; } catch (_) {}
+                            }
+                          }}
+                        />
+                      </Button>
+
+                      <TextField
+                        label="Logo URL"
+                        value={selectedElement.logoSrc || ''}
+                        onChange={(e) => handleUpdateElement(selectedElement.id, { logoSrc: e.target.value })}
+                        fullWidth
+                        disabled={!Boolean(selectedElement.logoEnabled)}
+                      />
+
+                      <FormControlLabel
+                        control={(
+                          <Switch
+                            checked={Boolean(selectedElement.logoBgEnabled)}
+                            onChange={(e) => handleUpdateElement(selectedElement.id, { logoBgEnabled: e.target.checked })}
+                            disabled={!Boolean(selectedElement.logoEnabled)}
+                          />
+                        )}
+                        label="Latar belakang logo (agar mudah discan)"
+                      />
+
+                      <TextField
+                        label="Warna BG Logo"
+                        type="color"
+                        value={selectedElement.logoBgColor || '#ffffff'}
+                        disabled={!Boolean(selectedElement.logoEnabled) || !Boolean(selectedElement.logoBgEnabled)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          scheduleUpdate('qrcodeLogoBgColor', () => handleUpdateElement(selectedElement.id, { logoBgColor: val }), 60);
+                        }}
+                      />
+
+                      <Box>
+                        <Typography gutterBottom sx={{ fontWeight: 'bold' }}>
+                          Ukuran Logo: {Math.round(((typeof selectedElement.logoScale === 'number' ? selectedElement.logoScale : 0.22) * 100))}%
+                        </Typography>
+
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 92px', gap: 1.5, alignItems: 'center' }}>
+                          {(() => {
+                            const maxScale = selectedElement.logoBgEnabled ? 0.26 : 0.60;
+                            return (
+                              <>
+                          <Slider
+                            value={typeof selectedElement.logoScale === 'number' ? selectedElement.logoScale : 0.22}
+                            onChange={(e, value) => handleUpdateElement(selectedElement.id, { logoScale: Number(value) })}
+                            min={0.1}
+                            max={maxScale}
+                            step={0.01}
+                            valueLabelDisplay="auto"
+                            disabled={!Boolean(selectedElement.logoEnabled)}
+                          />
+                          <TextField
+                            type="number"
+                            value={typeof selectedElement.logoScale === 'number' ? Number(selectedElement.logoScale.toFixed(2)) : 0.22}
+                            inputProps={{ min: 0.1, max: maxScale, step: 0.01 }}
+                            onChange={(e) => {
+                              if (e.target.value === '') return;
+                              const next = clampNumber(e.target.value, 0.1, maxScale, 0.01);
+                              handleUpdateElement(selectedElement.id, { logoScale: next });
+                            }}
+                            size="small"
+                            disabled={!Boolean(selectedElement.logoEnabled)}
+                          />
+                              </>
+                            );
+                          })()}
+                        </Box>
+                      </Box>
+
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="secondary"
+                        onClick={() => handleUpdateElement(selectedElement.id, { logoEnabled: false, logoSrc: null, logoScale: 0.22, logoBgEnabled: false, logoBgColor: '#ffffff' })}
+                      >
+                        Reset Logo
+                      </Button>
+
                       {/* QR Code border & shadow */}
                       <Divider />
                       <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
@@ -3710,30 +3942,62 @@ const Certificates = () => {
                                 shadowOffset={{ x: element.shadowOffsetX || 0, y: element.shadowOffsetY || 0 }}
                                 shadowOpacity={typeof element.shadowOpacity === 'number' ? element.shadowOpacity : 1}
                               >
-                                <Rect
-                                  x={0}
-                                  y={0}
-                                  width={element.width || 120}
-                                  height={element.height || 120}
-                                  fill={element.transparentBackground ? 'rgba(0,0,0,0)' : (element.backgroundColor || '#ffffff')}
-                                  stroke={element.borderColor || '#111827'}
-                                  strokeWidth={Math.max(0, element.borderWidth || 0)}
-                                  cornerRadius={element.borderRadius || 0}
-                                  opacity={typeof element.opacity === 'number' ? element.opacity : 1}
-                                />
-                                <Text
-                                  x={0}
-                                  y={0}
-                                  width={element.width || 120}
-                                  height={element.height || 120}
-                                  text="QR"
-                                  fontSize={Math.max(10, Math.round(Math.min(element.width || 120, element.height || 120) / 4))}
-                                  fontFamily="Arial"
-                                  fill="#111827"
-                                  align="center"
-                                  verticalAlign="middle"
-                                  listening={false}
-                                />
+                                <Group
+                                  clipFunc={(ctx) => {
+                                    const w = element.width || 120;
+                                    const h = element.height || 120;
+                                    const r = Math.min(element.borderRadius || 0, w / 2, h / 2);
+                                    if (!r) {
+                                      ctx.rect(0, 0, w, h);
+                                      return;
+                                    }
+                                    ctx.beginPath();
+                                    ctx.moveTo(r, 0);
+                                    ctx.arcTo(w, 0, w, h, r);
+                                    ctx.arcTo(w, h, 0, h, r);
+                                    ctx.arcTo(0, h, 0, 0, r);
+                                    ctx.arcTo(0, 0, w, 0, r);
+                                    ctx.closePath();
+                                  }}
+                                >
+                                  <Rect
+                                    x={0}
+                                    y={0}
+                                    width={element.width || 120}
+                                    height={element.height || 120}
+                                    fill={element.transparentBackground ? 'rgba(0,0,0,0)' : (element.backgroundColor || '#ffffff')}
+                                    stroke={element.borderColor || '#111827'}
+                                    strokeWidth={Math.max(0, element.borderWidth || 0)}
+                                    cornerRadius={element.borderRadius || 0}
+                                    opacity={typeof element.opacity === 'number' ? element.opacity : 1}
+                                  />
+                                  {qrPreviewCache?.[element.id]?.image ? (
+                                    <KonvaImage
+                                      image={qrPreviewCache[element.id].image}
+                                      x={0}
+                                      y={0}
+                                      width={element.width || 120}
+                                      height={element.height || 120}
+                                      opacity={typeof element.opacity === 'number' ? element.opacity : 1}
+                                      listening={false}
+                                    />
+                                  ) : (
+                                    <Text
+                                      x={0}
+                                      y={0}
+                                      width={element.width || 120}
+                                      height={element.height || 120}
+                                      text="QR"
+                                      fontSize={Math.max(10, Math.round(Math.min(element.width || 120, element.height || 120) / 4))}
+                                      fontFamily="Arial"
+                                      fill="#111827"
+                                      align="center"
+                                      verticalAlign="middle"
+                                      opacity={typeof element.opacity === 'number' ? element.opacity : 1}
+                                      listening={false}
+                                    />
+                                  )}
+                                </Group>
                               </Group>
                             </>
                           ) : (

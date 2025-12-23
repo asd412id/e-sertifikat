@@ -108,18 +108,23 @@ const theme = createTheme({
     },
     MuiInputLabel: {
       styleOverrides: {
-        root: {
-          fontWeight: 600,
-          '&.MuiInputLabel-outlined': {
-            transform: 'translate(14px, 14px) scale(1)',
-          },
-          '&.MuiInputLabel-outlined.MuiInputLabel-shrink': {
-            transform: 'translate(14px, -9px) scale(0.75)',
-            backgroundColor: '#ffffff',
-            padding: '0 6px',
-            borderRadius: 6,
-            lineHeight: 1.2,
-          },
+        root: ({ ownerState, theme }) => {
+          const isSmall = ownerState?.size === 'small'
+          return {
+            fontWeight: 600,
+            '&.MuiInputLabel-outlined': {
+              transform: isSmall
+                ? 'translate(14px, 10px) scale(1)'
+                : 'translate(14px, 14px) scale(1)',
+            },
+            '&.MuiInputLabel-outlined.MuiInputLabel-shrink': {
+              transform: 'translate(14px, -9px) scale(0.75)',
+              backgroundColor: theme?.palette?.background?.paper || '#ffffff',
+              padding: '0 6px',
+              borderRadius: 6,
+              lineHeight: 1.2,
+            },
+          }
         },
       },
     },

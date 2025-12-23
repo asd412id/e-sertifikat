@@ -3,6 +3,7 @@ const User = require('./User');
 const Event = require('./Event');
 const Participant = require('./Participant');
 const CertificateTemplate = require('./CertificateTemplate');
+const CertificateVerification = require('./CertificateVerification');
 
 // Define associations
 User.hasMany(Event, { foreignKey: 'userId', as: 'events' });
@@ -19,5 +20,6 @@ module.exports = {
   User,
   Event,
   Participant,
-  CertificateTemplate
+  CertificateTemplate,
+  CertificateVerification
 };

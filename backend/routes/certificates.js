@@ -5,6 +5,9 @@ async function certificateRoutes(fastify, options) {
   // Public certificate verification (QR) endpoint (no auth)
   fastify.get('/verify', CertificateController.verifyCertificate);
 
+  // Public QR preview for editor (no auth)
+  fastify.post('/qr-preview', CertificateController.previewQrCode);
+
   // Public portal endpoints (no auth)
   fastify.get('/public/events', CertificateController.getPublicDownloadEvents);
   fastify.get('/public/:slug', CertificateController.getPublicDownloadPortalInfo);
@@ -64,6 +67,31 @@ async function certificateRoutes(fastify, options) {
     '/events/:eventId/templates/:templateId/bulk-download-pdf',
     { preHandler: authenticateToken },
     CertificateController.bulkDownloadCertificatesPDF
+  );
+
+  // Issued certificate management (auth)
+  fastify.get(
+    '/issued',
+    { preHandler: authenticateToken },
+    CertificateController.getIssuedCertificates
+  );
+
+  fastify.put(
+    '/issued/:token/approve',
+    { preHandler: authenticateToken },
+    CertificateController.approveIssuedCertificate
+  );
+
+  fastify.put(
+    '/issued/:token/revoke',
+    { preHandler: authenticateToken },
+    CertificateController.revokeIssuedCertificate
+  );
+
+  fastify.delete(
+    '/issued/:token',
+    { preHandler: authenticateToken },
+    CertificateController.deleteIssuedCertificate
   );
 }
 

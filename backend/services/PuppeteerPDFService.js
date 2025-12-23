@@ -5,7 +5,9 @@ const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
+const sharp = require('sharp');
 const { PDFDocument } = require('pdf-lib');
+const { CertificateVerification, Event } = require('../models');
 // Removed unused locale import
 
 class PuppeteerPDFService {
@@ -16,6 +18,71 @@ class PuppeteerPDFService {
     this._jobQueue = [];
     this._fontsCssInFlight = new Map();
     this._assetBufferCache = new Map();
+  }
+
+  _parseHexColor(color, fallback = { r: 255, g: 255, b: 255 }) {
+    try {
+      const c = String(color || '').trim();
+      const m = /^#?([0-9a-f]{6})$/i.exec(c);
+      if (!m) return fallback;
+      const hex = m[1];
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      if (![r, g, b].every((v) => Number.isFinite(v))) return fallback;
+      return { r, g, b };
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  async _resolveImageBuffer(src) {
+    try {
+      const s = String(src || '').trim();
+      if (!s) return null;
+
+      if (s.startsWith('/uploads/')) {
+        const rel = s.replace('/uploads/', '');
+        const filePath = path.join(path.resolve(process.env.UPLOAD_DIR || './uploads'), rel);
+        if (!fsSync.existsSync(filePath)) return null;
+        return fsSync.readFileSync(filePath);
+      }
+
+      if (s.startsWith('http://localhost:')) {
+        const marker = '/api/uploads/';
+        if (s.includes(marker)) {
+          const rel = s.split(marker)[1];
+          const filePath = path.join(path.resolve(process.env.UPLOAD_DIR || './uploads'), rel);
+          if (!fsSync.existsSync(filePath)) return null;
+          return fsSync.readFileSync(filePath);
+        }
+      }
+
+      if (s.startsWith('https://')) {
+        return await new Promise((resolve) => {
+          try {
+            https.get(s, (res) => {
+              if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                return resolve(this._resolveImageBuffer(res.headers.location));
+              }
+              if (res.statusCode !== 200) {
+                res.resume();
+                return resolve(null);
+              }
+              const chunks = [];
+              res.on('data', (d) => chunks.push(d));
+              res.on('end', () => resolve(Buffer.concat(chunks)));
+            }).on('error', () => resolve(null));
+          } catch (_) {
+            return resolve(null);
+          }
+        });
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   _getVerifySecret() {
@@ -37,6 +104,12 @@ class PuppeteerPDFService {
     return crypto.createHmac('sha256', secret).update(body).digest('hex');
   }
 
+  _signVerifyToken(token) {
+    const secret = this._getVerifySecret();
+    if (!secret || !token) return null;
+    return crypto.createHmac('sha256', secret).update(String(token)).digest('hex');
+  }
+
   _buildVerifyUrl({ templateUuid, participantUuid }) {
     const base = this._getVerifyBaseUrl();
     const sig = this._signVerifyPayload({ templateUuid, participantUuid });
@@ -48,6 +121,120 @@ class PuppeteerPDFService {
       sig
     });
     return `${base}/api/certificates/verify?${params.toString()}`;
+  }
+
+  _buildVerifyUrlFromToken({ token }) {
+    const base = this._getVerifyBaseUrl();
+    const sig = this._signVerifyToken(token);
+    if (!base || !sig || !token) return null;
+
+    const params = new URLSearchParams({
+      token: String(token),
+      sig
+    });
+    return `${base}/api/certificates/verify?${params.toString()}`;
+  }
+
+  _templateHasQrCode(template) {
+    try {
+      const design = template?.design;
+      if (!design || typeof design !== 'object') return false;
+      const pages = Array.isArray(design.pages) && design.pages.length
+        ? design.pages
+        : [{ objects: Array.isArray(design.objects) ? design.objects : [] }];
+      for (const p of pages) {
+        const objs = Array.isArray(p?.objects) ? p.objects : [];
+        if (objs.some((o) => o && o.type === 'qrcode')) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  _buildSnapshotFields(event, participant) {
+    const configuredFields = Array.isArray(event?.participantFields) ? event.participantFields : [];
+    const participantData = (participant?.data && typeof participant.data === 'object') ? participant.data : {};
+    return configuredFields
+      .map((f) => {
+        const name = String(f?.name || '').trim();
+        if (!name) return null;
+        const raw = participantData?.[name];
+        const value = raw == null ? '' : String(raw);
+        if (!value) return null;
+        return { name, label: f?.label || name, value };
+      })
+      .filter(Boolean);
+  }
+
+  async _prepareVerificationTokens(template, participants) {
+    try {
+      if (!this._templateHasQrCode(template)) return;
+
+      const base = this._getVerifyBaseUrl();
+      const secret = this._getVerifySecret();
+      if (!base || !secret) return;
+
+      const list = Array.isArray(participants) ? participants : [participants];
+      if (!list.length) return;
+
+      const event = await Event.findByPk(template.eventId).catch(() => null);
+
+      const limit = Math.min(10, list.length);
+      let idx = 0;
+      const worker = async () => {
+        while (idx < list.length) {
+          const i = idx++;
+          const p = list[i];
+          if (!p || !p.uuid) continue;
+          if (p.__verifyToken) continue;
+
+          const fields = this._buildSnapshotFields(event, p);
+          const templateUuid = template?.uuid || null;
+          const participantUuid = p.uuid;
+
+          let rec = null;
+          if (templateUuid && participantUuid) {
+            rec = await CertificateVerification.findOne({
+              where: { templateUuid, participantUuid }
+            });
+          }
+
+          if (rec) {
+            const nextStatus = rec.status === 'deleted' ? 'approved' : rec.status;
+            await rec.update({
+              templateName: template?.name || rec.templateName || null,
+              eventUuid: event?.uuid || rec.eventUuid || null,
+              eventTitle: event?.title || rec.eventTitle || null,
+              fields,
+              issuedAt: new Date(),
+              status: nextStatus,
+              isRevoked: nextStatus === 'revoked',
+              revokedAt: nextStatus === 'revoked' ? (rec.revokedAt || new Date()) : null
+            });
+            p.__verifyToken = rec.token;
+          } else {
+            rec = await CertificateVerification.create({
+              templateUuid,
+              templateName: template?.name || null,
+              eventUuid: event?.uuid || null,
+              eventTitle: event?.title || null,
+              participantUuid,
+              fields,
+              issuedAt: new Date(),
+              status: 'approved',
+              isRevoked: false,
+              revokedAt: null
+            });
+            p.__verifyToken = rec?.token;
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: limit }, () => worker()));
+    } catch (e) {
+      console.log('prepareVerificationTokens failed (ignored):', e?.message || String(e));
+    }
   }
 
   async _applyPdfMetadata(pdfBuffer, template, participants) {
@@ -309,6 +496,7 @@ class PuppeteerPDFService {
 
       const list = Array.isArray(participants) ? participants : [participants];
       console.log(`Starting PDF generation for ${list.length} participant(s)`);
+      await this._prepareVerificationTokens(template, list);
 
       // Log font information for debugging
       let fontsUsedList = [];
@@ -935,10 +1123,12 @@ class PuppeteerPDFService {
               styles.push(`box-shadow: ${sx}px ${sy}px ${blur}px ${col}`);
             }
 
-            const verifyUrl = this._buildVerifyUrl({
-              templateUuid: template?.uuid,
-              participantUuid: participant?.uuid
-            });
+            const verifyUrl = participant?.__verifyToken
+              ? this._buildVerifyUrlFromToken({ token: participant.__verifyToken })
+              : this._buildVerifyUrl({
+                templateUuid: template?.uuid,
+                participantUuid: participant?.uuid
+              });
 
             const bgTransparent = Boolean(element.transparentBackground);
             const bgColor = (typeof element.backgroundColor === 'string' && element.backgroundColor.trim())
@@ -950,16 +1140,81 @@ class PuppeteerPDFService {
               const placeholderBg = bgTransparent ? 'transparent' : bgColor;
               html += `<div style="${styles.join('; ')}; background: ${placeholderBg}; display:flex; align-items:center; justify-content:center; color:#111827; font-size:12px; font-family:Arial;"><span>QR</span></div>`;
             } else {
-              const dataUrl = await QRCode.toDataURL(verifyUrl, {
-                errorCorrectionLevel: 'M',
-                margin: 0,
-                width: Math.round(Math.max(w, h)),
+              const size = Math.round(Math.max(w, h));
+              const wantsLogo = Boolean(element.logoEnabled) && typeof element.logoSrc === 'string' && element.logoSrc.trim().length > 0;
+              const qrOptions = {
+                errorCorrectionLevel: wantsLogo ? 'H' : 'M',
+                margin: wantsLogo ? 2 : 0,
+                width: size,
                 color: {
                   dark: '#000000',
                   light: bgTransparent ? '#00000000' : bgColor
                 }
-              });
-              html += `<img src="${dataUrl}" style="${styles.join('; ')}" />`;
+              };
+              if (!wantsLogo) {
+                const dataUrl = await QRCode.toDataURL(verifyUrl, qrOptions);
+                html += `<img src="${dataUrl}" style="${styles.join('; ')}" />`;
+              } else {
+                let qrBuffer = await QRCode.toBuffer(verifyUrl, qrOptions);
+                const meta = await sharp(qrBuffer).metadata().catch(() => null);
+                const qrW = Math.max(1, parseInt(meta?.width, 10) || size);
+                const qrH = Math.max(1, parseInt(meta?.height, 10) || size);
+                const qrSide = Math.max(1, Math.min(qrW, qrH));
+
+                const logoScaleRaw = (typeof element.logoScale === 'number' && Number.isFinite(element.logoScale))
+                  ? element.logoScale
+                  : 0.22;
+                const bgEnabled = Boolean(element.logoBgEnabled);
+                const maxScale = bgEnabled ? 0.26 : 0.60;
+                const logoScale = Math.max(0.1, Math.min(maxScale, logoScaleRaw));
+                const logoSize = Math.max(12, Math.round(qrSide * logoScale));
+
+                const logoBuf = await this._resolveImageBuffer(element.logoSrc);
+                if (logoBuf && logoBuf.length) {
+                  const pad = Math.max(4, Math.round(logoSize * 0.12));
+                  const boxSize = Math.min(qrSide, logoSize + pad * 2);
+
+                  let bgBox = null;
+                  if (bgEnabled) {
+                    const bg = (typeof element.logoBgColor === 'string' && element.logoBgColor.trim())
+                      ? element.logoBgColor.trim()
+                      : '#ffffff';
+                    const { r, g, b } = this._parseHexColor(bg, { r: 255, g: 255, b: 255 });
+                    bgBox = await sharp({
+                      create: {
+                        width: boxSize,
+                        height: boxSize,
+                        channels: 4,
+                        background: { r, g, b, alpha: 1 }
+                      }
+                    }).png().toBuffer();
+                  }
+
+                  const resizedLogo = await sharp(logoBuf)
+                    .resize(logoSize, logoSize, {
+                      fit: 'contain',
+                      withoutEnlargement: true,
+                      background: { r: 255, g: 255, b: 255, alpha: 0 }
+                    })
+                    .png()
+                    .toBuffer();
+
+                  const composites = [];
+                  if (bgBox) composites.push({ input: bgBox, gravity: 'center' });
+                  let logoOpacity = 1;
+                  if (!bgEnabled) {
+                    // Auto reduce opacity for very large transparent logos to preserve QR scannability.
+                    // 0.20 -> 1.00, 0.60 -> 0.25 (linear clamp)
+                    const t = Math.max(0, Math.min(1, (logoScale - 0.20) / 0.40));
+                    logoOpacity = Math.max(0.25, 1 - 0.75 * t);
+                  }
+                  composites.push({ input: resizedLogo, gravity: 'center', opacity: logoOpacity });
+                  qrBuffer = await sharp(qrBuffer).composite(composites).png().toBuffer();
+                }
+
+                const dataUrl = `data:image/png;base64,${qrBuffer.toString('base64')}`;
+                html += `<img src="${dataUrl}" style="${styles.join('; ')}" />`;
+              }
             }
           }
         }
