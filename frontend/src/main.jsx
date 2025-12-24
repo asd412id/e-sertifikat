@@ -106,6 +106,21 @@ const theme = createTheme({
         },
       },
     },
+    MuiSelect: {
+      styleOverrides: {
+        select: ({ ownerState }) => {
+          const isSmall = ownerState?.size === 'small'
+          return {
+            ...(isSmall
+              ? {
+                  paddingTop: 10,
+                  paddingBottom: 10,
+                }
+              : null),
+          }
+        },
+      },
+    },
     MuiInputLabel: {
       styleOverrides: {
         root: ({ ownerState, theme }) => {
@@ -114,7 +129,7 @@ const theme = createTheme({
             fontWeight: 600,
             '&.MuiInputLabel-outlined': {
               transform: isSmall
-                ? 'translate(14px, 10px) scale(1)'
+                ? 'translate(14px, 12px) scale(1)'
                 : 'translate(14px, 14px) scale(1)',
             },
             '&.MuiInputLabel-outlined.MuiInputLabel-shrink': {

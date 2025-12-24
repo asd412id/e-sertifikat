@@ -801,6 +801,38 @@ const Certificates = () => {
     }
   }, [eventId]);
 
+  const buildPublicDownloadSettingsFromEvent = (ev, allTemplates) => {
+    const nextSearchFields = Array.isArray(ev?.publicDownloadSearchFields) && ev.publicDownloadSearchFields.length
+      ? ev.publicDownloadSearchFields
+      : (ev?.publicDownloadIdentifierField
+        ? [{ name: ev.publicDownloadIdentifierField, matchMode: ev.publicDownloadMatchMode || 'exact', required: true }]
+        : []);
+
+    const fk = ev?.publicDownloadTemplateId;
+    const found = fk ? (allTemplates || []).find((t) => t && t.id === fk) : null;
+    const templateUuid = found?.uuid ? String(found.uuid) : '';
+
+    return {
+      enabled: !!ev?.publicDownloadEnabled,
+      identifierField: ev?.publicDownloadIdentifierField || '',
+      matchMode: ev?.publicDownloadMatchMode || 'exact',
+      searchFields: nextSearchFields,
+      templateId: templateUuid,
+      regenerateSlug: false,
+      slug: ev?.publicDownloadSlug || '',
+      resultFields: Array.isArray(ev?.publicDownloadResultFields) ? ev.publicDownloadResultFields : []
+    };
+  };
+
+  const wasPublicSettingsOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = wasPublicSettingsOpenRef.current;
+    if (publicSettingsOpen && !wasOpen) {
+      setPublicDownloadSettings(buildPublicDownloadSettingsFromEvent(event, templates));
+    }
+    wasPublicSettingsOpenRef.current = publicSettingsOpen;
+  }, [publicSettingsOpen, event, templates]);
+
   const fetchEvent = async () => {
     try {
       const response = await eventService.getEvent(eventId);
