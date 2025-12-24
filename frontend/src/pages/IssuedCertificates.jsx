@@ -15,6 +15,7 @@ import {
   TextField,
   FormControl,
   InputLabel,
+  Autocomplete,
   Select,
   MenuItem,
   Button,
@@ -75,6 +76,17 @@ const IssuedCertificates = () => {
     eventId: 'all',
     status: 'active'
   });
+
+  const eventOptions = useMemo(
+    () => ([{ uuid: 'all', title: 'Semua' }, ...(events || [])]),
+    [events]
+  );
+
+  const selectedEventOption = useMemo(() => {
+    const val = String(filters.eventId || 'all');
+    if (val === 'all') return { uuid: 'all', title: 'Semua' };
+    return (events || []).find((ev) => String(ev?.uuid) === val) || { uuid: val, title: val };
+  }, [events, filters.eventId]);
 
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -583,28 +595,27 @@ const IssuedCertificates = () => {
               }}
             />
 
-            <FormControl size="small" fullWidth>
-              <InputLabel id="issued-event">Event</InputLabel>
-              <Select
-                labelId="issued-event"
-                label="Event"
-                value={filters.eventId}
-                onChange={(e) => setFilters((p) => ({ ...p, eventId: e.target.value }))}
-                displayEmpty
-                sx={{
-                  '& .MuiSelect-select': {
-                    py: 1.25
-                  }
-                }}
-              >
-                <MenuItem value="all">Semua</MenuItem>
-                {(events || []).map((ev) => (
-                  <MenuItem key={ev.uuid} value={ev.uuid}>
-                    {ev.title}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              fullWidth
+              options={eventOptions}
+              value={selectedEventOption}
+              onChange={(_, next) => setFilters((p) => ({ ...p, eventId: next?.uuid ? String(next.uuid) : 'all' }))}
+              getOptionLabel={(ev) => (ev?.title ? String(ev.title) : '')}
+              isOptionEqualToValue={(a, b) => String(a?.uuid) === String(b?.uuid)}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Event"
+                  size="small"
+                  InputProps={{
+                    ...params.InputProps,
+                    sx: {
+                      '& input': { py: 1.25 }
+                    }
+                  }}
+                />
+              )}
+            />
 
             <FormControl size="small" fullWidth>
               <InputLabel id="issued-status">Status</InputLabel>

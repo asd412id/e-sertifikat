@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Autocomplete,
   CircularProgress,
   Tooltip,
   Paper,
@@ -2305,25 +2306,22 @@ const Certificates = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Pilih peserta sebelum preview.
             </Typography>
-            <FormControl fullWidth size="small">
-              <InputLabel id="cert-preview-participant">Peserta</InputLabel>
-              <Select
-                labelId="cert-preview-participant"
-                label="Peserta"
-                value={previewPickerParticipantId}
-                onChange={(e) => setPreviewPickerParticipantId(e.target.value)}
-                disabled={previewing}
-              >
-                {(participants || []).map((p) => {
-                  const label = p?.data?.nama || p?.data?.name || p?.uuid;
-                  return (
-                    <MenuItem key={p.uuid} value={p.uuid}>
-                      {label}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
+            <Autocomplete
+              fullWidth
+              options={participants || []}
+              value={(participants || []).find((p) => String(p?.uuid) === String(previewPickerParticipantId || '')) || null}
+              onChange={(_, next) => setPreviewPickerParticipantId(next?.uuid ? String(next.uuid) : '')}
+              getOptionLabel={(p) => (p?.data?.nama || p?.data?.name || p?.uuid ? String(p?.data?.nama || p?.data?.name || p?.uuid) : '')}
+              isOptionEqualToValue={(a, b) => String(a?.uuid) === String(b?.uuid)}
+              disabled={previewing}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Peserta"
+                  size="small"
+                />
+              )}
+            />
           </DialogContent>
           <DialogActions sx={{ px: 2, py: 1.5 }}>
             <Button
