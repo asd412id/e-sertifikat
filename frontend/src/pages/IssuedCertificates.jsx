@@ -47,6 +47,8 @@ import toast from 'react-hot-toast';
 const IssuedCertificates = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
+  const [downloadLoading, setDownloadLoading] = useState('');
+  const [refreshLoading, setRefreshLoading] = useState(false);
   const [error, setError] = useState('');
 
   const didInitFetch = useRef(false);
@@ -79,9 +81,10 @@ const IssuedCertificates = () => {
     document.title = title;
   }, [title]);
 
-  const fetchData = async (page = pagination.currentPage, override = null) => {
+  const fetchData = async (page = pagination.currentPage, override = null, opts = {}) => {
     try {
-      setLoading(true);
+      const silent = !!opts?.silent;
+      if (!silent) setLoading(true);
       setError('');
       const f = override || filters;
       const queryEventId = f.eventId === 'all' ? '' : (f.eventId || '');
@@ -108,7 +111,7 @@ const IssuedCertificates = () => {
       setItems([]);
       setEvents([]);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   };
 
@@ -183,13 +186,16 @@ const IssuedCertificates = () => {
   };
 
   const downloadIssuedCertificate = async (row) => {
+    const templateId = row?.templateUuid;
+    const participantId = row?.participantUuid;
+    const downloadKey = `download:${String(templateId || '')}:${String(participantId || '')}`;
     try {
-      const templateId = row?.templateUuid;
-      const participantId = row?.participantUuid;
       if (!templateId || !participantId) {
         toast.error('Template atau peserta tidak ditemukan');
         return;
       }
+
+      setDownloadLoading(downloadKey);
       const res = await api.post(
         `/certificates/templates/${templateId}/participants/${participantId}/download-pdf`,
         {},
@@ -198,7 +204,27 @@ const IssuedCertificates = () => {
           timeout: 90000
         }
       );
-      const blob = new Blob([res.data], { type: 'application/pdf' });
+
+      const contentType = String(res?.headers?.['content-type'] || res?.headers?.['Content-Type'] || '').toLowerCase();
+      const isBlob = (typeof Blob !== 'undefined') && (res.data instanceof Blob);
+      const blob = isBlob
+        ? res.data
+        : new Blob([res.data], { type: contentType || 'application/pdf' });
+
+      if (!blob || !blob.size) {
+        throw new Error('File sertifikat kosong atau tidak valid');
+      }
+
+      if (contentType.includes('application/json') || contentType.includes('text/plain')) {
+        try {
+          const text = await blob.text();
+          const parsed = JSON.parse(text);
+          throw new Error(parsed?.error || 'Terjadi kesalahan saat memproses sertifikat');
+        } catch (err) {
+          throw err;
+        }
+      }
+
       const url = URL.createObjectURL(blob);
 
       let fileName = `sertifikat_${participantId}.pdf`;
@@ -221,6 +247,8 @@ const IssuedCertificates = () => {
       }, 1500);
     } catch (e) {
       toast.error(e?.response?.data?.error || e?.message || 'Gagal mengunduh sertifikat');
+    } finally {
+      setDownloadLoading('');
     }
   };
 
@@ -253,7 +281,7 @@ const IssuedCertificates = () => {
         toast.success('Sertifikat dihapus');
       }
 
-      await fetchData(pagination.currentPage);
+      await fetchData(pagination.currentPage, null, { silent: true });
     } catch (e) {
       setError(e?.response?.data?.error || e?.message || 'Aksi gagal');
     } finally {
@@ -335,7 +363,8 @@ const IssuedCertificates = () => {
           {items.map((row) => {
             const token = row.token;
             const st = String(row?.status || '').toLowerCase();
-            const disabled = !!actionLoading;
+            const disabled = !!actionLoading || !!downloadLoading || !!refreshLoading;
+            const isDownloading = downloadLoading === `download:${String(row?.templateUuid || '')}:${String(row?.participantUuid || '')}`;
 
             return (
               <Card key={token} variant="outlined" sx={{ borderRadius: 3 }}>
@@ -379,8 +408,8 @@ const IssuedCertificates = () => {
                         fullWidth
                         size="small"
                         variant="contained"
-                        startIcon={<DownloadOutlined />}
-                        disabled={disabled || st === 'deleted'}
+                        startIcon={isDownloading ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
+                        disabled={disabled || st === 'deleted' || isDownloading}
                         onClick={() => downloadIssuedCertificate(row)}
                         sx={{ borderRadius: 2, fontWeight: 900 }}
                       >
@@ -423,9 +452,16 @@ const IssuedCertificates = () => {
 
           <Button
             variant="outlined"
-            startIcon={<Refresh />}
-            onClick={() => fetchData(pagination.currentPage)}
-            disabled={loading}
+            startIcon={refreshLoading ? <CircularProgress size={16} color="inherit" /> : <Refresh />}
+            onClick={async () => {
+              try {
+                setRefreshLoading(true);
+                await fetchData(pagination.currentPage);
+              } finally {
+                setRefreshLoading(false);
+              }
+            }}
+            disabled={loading || refreshLoading}
             sx={{ borderRadius: 2, fontWeight: 800 }}
           >
             Refresh
@@ -535,7 +571,8 @@ const IssuedCertificates = () => {
                         {(items || []).map((row, idx) => {
                           const token = row.token;
                           const st = String(row?.status || '').toLowerCase();
-                          const disabled = !!actionLoading;
+                          const disabled = !!actionLoading || !!downloadLoading || !!refreshLoading;
+                          const isDownloading = downloadLoading === `download:${String(row?.templateUuid || '')}:${String(row?.participantUuid || '')}`;
                           const rowNo = idx + 1 + (Number(pagination.currentPage || 1) - 1) * Number(pagination.limit || 10);
                           return (
                             <TableRow key={token} hover>
@@ -591,8 +628,8 @@ const IssuedCertificates = () => {
                                   <Button
                                     size="small"
                                     variant="contained"
-                                    startIcon={<DownloadOutlined />}
-                                    disabled={disabled || st === 'deleted'}
+                                    startIcon={isDownloading ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
+                                    disabled={disabled || st === 'deleted' || isDownloading}
                                     onClick={() => downloadIssuedCertificate(row)}
                                     sx={{ borderRadius: 2, fontWeight: 800 }}
                                   >
@@ -738,11 +775,24 @@ const IssuedCertificates = () => {
           </DialogContent>
 
           <DialogActions sx={{ px: 2, py: 1.5 }}>
+            {(() => {
+              const isDownloading = selectedRow
+                ? (downloadLoading === `download:${String(selectedRow?.templateUuid || '')}:${String(selectedRow?.participantUuid || '')}`)
+                : false;
+              const approveKey = selectedRow?.token ? `approve:${selectedRow?.token}` : '';
+              const revokeKey = selectedRow?.token ? `revoke:${selectedRow?.token}` : '';
+              const deleteKey = selectedRow?.token ? `delete:${selectedRow?.token}` : '';
+              const isApproving = !!approveKey && actionLoading === approveKey;
+              const isRevoking = !!revokeKey && actionLoading === revokeKey;
+              const isDeleting = !!deleteKey && actionLoading === deleteKey;
+
+              return (
+                <>
             <Button
               variant="outlined"
               onClick={() => selectedRow && downloadIssuedCertificate(selectedRow)}
-              startIcon={<DownloadOutlined />}
-              disabled={!selectedRow || String(selectedRow?.status || '').toLowerCase() === 'deleted' || !!actionLoading}
+              startIcon={isDownloading ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
+              disabled={!selectedRow || String(selectedRow?.status || '').toLowerCase() === 'deleted' || !!actionLoading || !!downloadLoading || isDownloading}
               sx={{ borderRadius: 2, fontWeight: 900 }}
             >
               Download
@@ -751,7 +801,7 @@ const IssuedCertificates = () => {
             <Button
               variant="text"
               color="error"
-              disabled={!selectedRow || !!actionLoading}
+              disabled={!selectedRow || !!actionLoading || isDeleting}
               onClick={async () => {
                 openConfirm('delete');
               }}
@@ -762,8 +812,8 @@ const IssuedCertificates = () => {
             <Button
               variant="contained"
               color="success"
-              startIcon={<CheckCircleOutline />}
-              disabled={!selectedRow || !!actionLoading || String(selectedRow?.status || '').toLowerCase() === 'deleted' || actionLoading === `approve:${selectedRow?.token}`}
+              startIcon={isApproving ? <CircularProgress size={16} color="inherit" /> : <CheckCircleOutline />}
+              disabled={!selectedRow || !!actionLoading || String(selectedRow?.status || '').toLowerCase() === 'deleted' || isApproving}
               onClick={async () => {
                 openConfirm('approve');
               }}
@@ -774,8 +824,8 @@ const IssuedCertificates = () => {
             <Button
               variant="outlined"
               color="error"
-              startIcon={<Block />}
-              disabled={!selectedRow || !!actionLoading || String(selectedRow?.status || '').toLowerCase() === 'deleted' || actionLoading === `revoke:${selectedRow?.token}`}
+              startIcon={isRevoking ? <CircularProgress size={16} color="inherit" /> : <Block />}
+              disabled={!selectedRow || !!actionLoading || String(selectedRow?.status || '').toLowerCase() === 'deleted' || isRevoking}
               onClick={async () => {
                 openConfirm('revoke');
               }}
@@ -783,6 +833,9 @@ const IssuedCertificates = () => {
             >
               Revoke
             </Button>
+                </>
+              );
+            })()}
           </DialogActions>
         </Dialog>
 

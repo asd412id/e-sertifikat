@@ -1368,6 +1368,10 @@ class CertificateController {
       const PuppeteerPDFService = require('../services/PuppeteerPDFService');
       const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
 
+      if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+        throw new Error('File PDF kosong atau tidak valid');
+      }
+
       await incrementVerificationDownloadCount({
         templateUuid: template?.uuid,
         participantUuid: participant?.uuid
@@ -1384,6 +1388,7 @@ class CertificateController {
       reply.header('Access-Control-Allow-Origin', '*');
       reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       reply.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      reply.header('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, Content-Type');
 
       console.log(`Sending individual PDF file: ${pdfFileName} (${pdfBuffer.length} bytes)`);
 
