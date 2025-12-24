@@ -53,6 +53,7 @@ import {
   ArrowForward,
   MoreVert,
   GetApp,
+  PictureAsPdf,
   Link as LinkIcon,
   ContentCopy,
   FormatBold,
@@ -76,6 +77,7 @@ import QRCode from 'qrcode';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PdfPreviewDialog from '../components/PdfPreviewDialog';
 import AssetPickerDialog from '../components/certificates/AssetPickerDialog';
 import CertificateEditorCanvas from '../components/certificates/CertificateEditorCanvas';
 import CertificateEditorSidebar from '../components/certificates/CertificateEditorSidebar';
@@ -509,6 +511,15 @@ const Certificates = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
+  const [previewPickerTemplate, setPreviewPickerTemplate] = useState(null);
+  const [previewPickerParticipantId, setPreviewPickerParticipantId] = useState('');
+  const [previewing, setPreviewing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewDialogTitle, setPreviewDialogTitle] = useState('Preview Sertifikat');
 
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyTemplateName, setCopyTemplateName] = useState('');
@@ -1040,6 +1051,54 @@ const Certificates = () => {
       setParticipants(response.data.participants);
     } catch (error) {
       console.error('Gagal memuat peserta');
+    }
+  };
+
+  const openPreviewPicker = (template) => {
+    if (!participants || participants.length === 0) {
+      toast.error('Tidak ada peserta untuk dipreview');
+      return;
+    }
+    setPreviewPickerTemplate(template || null);
+    setPreviewPickerParticipantId('');
+    setPreviewPickerOpen(true);
+  };
+
+  const runPreviewFromPicker = async () => {
+    try {
+      const template = previewPickerTemplate;
+      const participantId = String(previewPickerParticipantId || '');
+      if (!template?.uuid) {
+        toast.error('Template tidak valid');
+        return;
+      }
+      if (!participantId) {
+        toast.error('Pilih peserta terlebih dahulu');
+        return;
+      }
+
+      const participant = (participants || []).find((p) => String(p?.uuid) === participantId);
+      const participantName = participant?.data?.nama || participant?.data?.name || participantId;
+
+      setPreviewing(true);
+      setPreviewError('');
+      setPreviewBlob(null);
+      setPreviewDialogTitle(`Preview Sertifikat - ${participantName}`);
+
+      const blob = await certificateService.previewCertificatePDF(template.uuid, participantId);
+      if (!blob || blob.size === 0) {
+        throw new Error('File PDF kosong atau tidak valid');
+      }
+
+      setPreviewBlob(blob);
+      setPreviewOpen(true);
+      setPreviewPickerOpen(false);
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || error.message || 'Gagal preview sertifikat';
+      toast.error('Gagal preview sertifikat: ' + errorMessage);
+      setPreviewError(errorMessage);
+    } finally {
+      setPreviewing(false);
     }
   };
 
@@ -2214,10 +2273,86 @@ const Certificates = () => {
   return (
     <Layout>
       <Box>
+        <PdfPreviewDialog
+          open={previewOpen}
+          title={previewDialogTitle}
+          loading={previewing}
+          error={previewError}
+          blob={previewBlob}
+          onClose={() => {
+            if (previewing) return;
+            setPreviewOpen(false);
+            setPreviewBlob(null);
+            setPreviewError('');
+          }}
+        />
+
+        <Dialog
+          open={previewPickerOpen}
+          onClose={() => {
+            if (previewing) return;
+            setPreviewPickerOpen(false);
+            setPreviewPickerTemplate(null);
+            setPreviewPickerParticipantId('');
+          }}
+          fullWidth
+          maxWidth="sm"
+        >
+          <DialogTitle sx={{ fontWeight: 950 }}>
+            Preview Sertifikat
+          </DialogTitle>
+          <DialogContent dividers>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Pilih peserta sebelum preview.
+            </Typography>
+            <FormControl fullWidth size="small">
+              <InputLabel id="cert-preview-participant">Peserta</InputLabel>
+              <Select
+                labelId="cert-preview-participant"
+                label="Peserta"
+                value={previewPickerParticipantId}
+                onChange={(e) => setPreviewPickerParticipantId(e.target.value)}
+                disabled={previewing}
+              >
+                {(participants || []).map((p) => {
+                  const label = p?.data?.nama || p?.data?.name || p?.uuid;
+                  return (
+                    <MenuItem key={p.uuid} value={p.uuid}>
+                      {label}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+          </DialogContent>
+          <DialogActions sx={{ px: 2, py: 1.5 }}>
+            <Button
+              onClick={() => {
+                if (previewing) return;
+                setPreviewPickerOpen(false);
+                setPreviewPickerTemplate(null);
+                setPreviewPickerParticipantId('');
+              }}
+              sx={{ borderRadius: 2, fontWeight: 900 }}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={previewing ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdf />}
+              onClick={runPreviewFromPicker}
+              disabled={previewing || !previewPickerTemplate?.uuid || !previewPickerParticipantId}
+              sx={{ borderRadius: 2, fontWeight: 900 }}
+            >
+              Preview
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         <ConfirmDialog
           open={deleteTemplateConfirmOpen}
           title="Konfirmasi Hapus Template"
-          description="Apakah Anda yakin ingin menghapus template ini?"
+          description="Apakah Anda yakin ingin menghapus template sertifikat ini?"
           confirmText="Hapus"
           confirmColor="error"
           loading={false}
@@ -2245,6 +2380,7 @@ const Certificates = () => {
             }
           }}
         />
+
         <Paper
           elevation={0}
           sx={{
@@ -2746,31 +2882,52 @@ const Certificates = () => {
                   </CardContent>
 
                   <CardActions sx={{ px: 3, pb: 3 }}>
-                    <Stack direction="row" spacing={1} width="100%">
-                      <Button
-                        variant="outlined"
-                        size="medium"
-                        startIcon={<Edit />}
-                        onClick={() => handleOpenEditor(template)}
-                        sx={{
-                          flex: 1,
-                          minHeight: 40,
-                          borderRadius: 2,
-                          fontWeight: 700,
-                          bgcolor: 'rgba(2, 6, 23, 0.01)',
-                          '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.03)' }
-                        }}
-                      >
-                        Edit
-                      </Button>
+                    <Stack spacing={1} width="100%">
+                      <Stack direction="row" spacing={1} width="100%">
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          size="medium"
+                          startIcon={<Edit />}
+                          onClick={() => handleOpenEditor(template)}
+                          sx={{
+                            minHeight: 40,
+                            borderRadius: 2,
+                            fontWeight: 700,
+                            bgcolor: 'rgba(2, 6, 23, 0.01)',
+                            '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.03)' }
+                          }}
+                        >
+                          Edit
+                        </Button>
+
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          size="medium"
+                          startIcon={<PictureAsPdf />}
+                          onClick={() => openPreviewPicker(template)}
+                          disabled={participants.length === 0 || previewing}
+                          sx={{
+                            minHeight: 40,
+                            borderRadius: 2,
+                            fontWeight: 700,
+                            bgcolor: 'rgba(2, 6, 23, 0.01)',
+                            '&:hover': { bgcolor: 'rgba(2, 6, 23, 0.03)' }
+                          }}
+                        >
+                          Preview
+                        </Button>
+                      </Stack>
 
                       <Button
+                        fullWidth
                         variant="contained"
                         size="medium"
-                        startIcon={generating ? <CircularProgress size={16} /> : <GetApp />}
+                        startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <GetApp />}
                         onClick={() => handleDownloadAll(template.uuid)}
                         disabled={generating || participants.length === 0}
-                        sx={{ flex: 1, minHeight: 40, borderRadius: 2, fontWeight: 700 }}
+                        sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700 }}
                       >
                         Download Semua
                       </Button>

@@ -40,6 +40,13 @@ async function certificateRoutes(fastify, options) {
     CertificateController.downloadIndividualCertificatePDF
   );
 
+  // Individual certificate preview (auth) - does NOT increment downloadCount
+  fastify.post(
+    '/templates/:templateId/participants/:participantId/preview-pdf',
+    { preHandler: authenticateToken },
+    CertificateController.previewIndividualCertificatePDF
+  );
+
   // Async job-based endpoints for high concurrent generation (auth)
   fastify.post(
     '/templates/:templateId/participants/:participantId/enqueue-pdf',

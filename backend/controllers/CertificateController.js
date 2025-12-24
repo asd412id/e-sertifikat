@@ -156,6 +156,68 @@ class CertificateController {
     }
   }
 
+  async previewIndividualCertificatePDF(request, reply) {
+    try {
+      const { templateId, participantId } = request.params;
+
+      console.log(`Individual PDF preview request for participant ${participantId} with template ${templateId}`);
+
+      // Get template and verify ownership
+      const template = await CertificateService.getTemplateById(templateId, request.user.userId);
+      if (!template) {
+        console.log('Template not found');
+        return reply.status(404).send({
+          error: 'Template not found'
+        });
+      }
+
+      // Get the participant and verify they belong to the template's event
+      const participant = await Participant.findOne({
+        where: {
+          uuid: participantId,
+          eventId: template.eventId
+        }
+      });
+
+      if (!participant) {
+        console.log('Participant not found or not part of this event');
+        return reply.status(404).send({
+          error: 'Participant not found or not part of this event'
+        });
+      }
+
+      console.log(`Generating preview PDF for participant ${participantId}`);
+
+      const PuppeteerPDFService = require('../services/PuppeteerPDFService');
+      const pdfBuffer = await PuppeteerPDFService.createPDF(template, participant);
+
+      if (!pdfBuffer || !Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+        throw new Error('File PDF kosong atau tidak valid');
+      }
+
+      const participantName = participant.data?.name || participant.data?.nama || 'participant';
+      const sanitizedName = participantName.replace(/[^\w\s-]/g, '_');
+      const pdfFileName = `sertifikat_${sanitizedName}_${participantId}.pdf`;
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `inline; filename="${pdfFileName}"`);
+      reply.header('Content-Length', pdfBuffer.length);
+      reply.header('Access-Control-Allow-Origin', '*');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      reply.header('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, Content-Type');
+
+      reply.send(pdfBuffer);
+    } catch (error) {
+      console.error('Individual PDF preview error:', error);
+      if (!reply.sent) {
+        reply.status(500).send({
+          error: error.message
+        });
+      }
+    }
+  }
+
   async getIssuedCertificates(request, reply) {
     try {
       const { page = 1, limit = 10, search = '', eventId = '', templateId = '', status = '' } = request.query || {};

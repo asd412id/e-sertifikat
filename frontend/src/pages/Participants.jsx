@@ -50,6 +50,7 @@ import {
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import ConfirmDialog from '../components/ConfirmDialog';
+import PdfPreviewDialog from '../components/PdfPreviewDialog';
 import { participantService, eventService, certificateService } from '../services/dataService';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -88,8 +89,14 @@ const Participants = () => {
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateDialog, setTemplateDialog] = useState(false);
+  const [templateDialogMode, setTemplateDialogMode] = useState('');
   const [bulkPdfDownloading, setBulkPdfDownloading] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState(null); // For individual downloads
+  const [previewing, setPreviewing] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewDialogTitle, setPreviewDialogTitle] = useState('Preview Sertifikat');
   const [deleteAllDialog, setDeleteAllDialog] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
 
@@ -408,8 +415,44 @@ const Participants = () => {
 
   const openIndividualDownloadDialog = async (participantId, participantName) => {
     setCurrentParticipant({ id: participantId, name: participantName });
+    setTemplateDialogMode('download');
     await loadTemplates();
     setTemplateDialog(true);
+  };
+
+  const openIndividualPreviewDialog = async (participantId, participantName) => {
+    setCurrentParticipant({ id: participantId, name: participantName });
+    setTemplateDialogMode('preview');
+    await loadTemplates();
+    setTemplateDialog(true);
+  };
+
+  const handlePreviewCertificate = async (participantId, participantName) => {
+    try {
+      if (!selectedTemplate?.uuid) {
+        toast.error('Silakan pilih template terlebih dahulu');
+        return;
+      }
+
+      setPreviewing(participantId);
+      setPreviewError('');
+      setPreviewBlob(null);
+      setPreviewDialogTitle(`Preview Sertifikat - ${participantName || 'Peserta'}`);
+
+      const blob = await certificateService.previewCertificatePDF(selectedTemplate.uuid, participantId);
+      if (!blob || blob.size === 0) {
+        throw new Error('File PDF kosong atau tidak valid');
+      }
+      setPreviewBlob(blob);
+      setPreviewOpen(true);
+      setTemplateDialog(false);
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || error.message || 'Gagal preview sertifikat';
+      toast.error('Gagal preview sertifikat: ' + errorMessage);
+      setPreviewError(errorMessage);
+    } finally {
+      setPreviewing(null);
+    }
   };
 
   const handleGenerateAndDownloadCertificate = async (participantId, participantName) => {
@@ -465,6 +508,20 @@ const Participants = () => {
   return (
     <Layout>
       <Box>
+        <PdfPreviewDialog
+          open={previewOpen}
+          title={previewDialogTitle}
+          loading={Boolean(previewing)}
+          error={previewError}
+          blob={previewBlob}
+          onClose={() => {
+            if (previewing) return;
+            setPreviewOpen(false);
+            setPreviewBlob(null);
+            setPreviewError('');
+          }}
+        />
+
         <ConfirmDialog
           open={confirmOpen}
           title="Konfirmasi Hapus Peserta"
@@ -714,9 +771,22 @@ const Participants = () => {
                                   participant.uuid,
                                   participant.data?.nama || participant.data?.name || `Peserta ${participant.uuid}`
                                 )}
-                                disabled={downloading === participant.uuid}
+                                disabled={downloading === participant.uuid || previewing === participant.uuid}
                               >
                                 {downloading === participant.uuid ? <CircularProgress size={16} /> : <Download />}
+                              </IconButton>
+                            </Tooltip>
+
+                            <Tooltip title={previewing === participant.uuid ? 'Mempersiapkan preview...' : 'Preview Sertifikat'}>
+                              <IconButton
+                                size="small"
+                                onClick={() => openIndividualPreviewDialog(
+                                  participant.uuid,
+                                  participant.data?.nama || participant.data?.name || `Peserta ${participant.uuid}`
+                                )}
+                                disabled={downloading === participant.uuid || previewing === participant.uuid}
+                              >
+                                {previewing === participant.uuid ? <CircularProgress size={16} /> : <PictureAsPdf />}
                               </IconButton>
                             </Tooltip>
                           </TableCell>
@@ -908,12 +978,15 @@ const Participants = () => {
         <Dialog open={templateDialog} onClose={() => {
           setTemplateDialog(false);
           setCurrentParticipant(null);
+          setTemplateDialogMode('');
         }}>
           <DialogTitle>Pilih Template Sertifikat</DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {currentParticipant
-                ? `Pilih template sertifikat untuk mengunduh sertifikat ${currentParticipant.name}.`
+                ? (templateDialogMode === 'preview'
+                  ? `Pilih template sertifikat untuk preview sertifikat ${currentParticipant.name}.`
+                  : `Pilih template sertifikat untuk mengunduh sertifikat ${currentParticipant.name}.`)
                 : 'Pilih template sertifikat untuk mengunduh semua sertifikat peserta dalam satu file PDF.'
               }
             </Typography>
@@ -945,22 +1018,38 @@ const Participants = () => {
             <Button onClick={() => {
               setTemplateDialog(false);
               setCurrentParticipant(null);
+              setTemplateDialogMode('');
             }}>
               Batal
             </Button>
             {currentParticipant ? (
-              // Individual download button
-              <Button
-                onClick={() => {
-                  handleGenerateAndDownloadCertificate(currentParticipant.id, currentParticipant.name);
-                }}
-                variant="contained"
-                disabled={!selectedTemplate || downloading === currentParticipant.id}
-                startIcon={downloading === currentParticipant.id ? <CircularProgress size={20} /> : <Download />}
-                sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
-              >
-                {downloading === currentParticipant.id ? 'Mengunduh...' : 'Unduh Sertifikat'}
-              </Button>
+              (templateDialogMode === 'preview'
+                ? (
+                  <Button
+                    onClick={() => {
+                      handlePreviewCertificate(currentParticipant.id, currentParticipant.name);
+                    }}
+                    variant="contained"
+                    disabled={!selectedTemplate || previewing === currentParticipant.id}
+                    startIcon={previewing === currentParticipant.id ? <CircularProgress size={20} /> : <PictureAsPdf />}
+                    sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
+                  >
+                    {previewing === currentParticipant.id ? 'Mempersiapkan...' : 'Preview'}
+                  </Button>
+                )
+                : (
+                  <Button
+                    onClick={() => {
+                      handleGenerateAndDownloadCertificate(currentParticipant.id, currentParticipant.name);
+                    }}
+                    variant="contained"
+                    disabled={!selectedTemplate || downloading === currentParticipant.id}
+                    startIcon={downloading === currentParticipant.id ? <CircularProgress size={20} /> : <Download />}
+                    sx={{ borderRadius: 2, fontWeight: 'bold', minWidth: 120 }}
+                  >
+                    {downloading === currentParticipant.id ? 'Mengunduh...' : 'Unduh Sertifikat'}
+                  </Button>
+                ))
             ) : (
               // Bulk download button
               <Button

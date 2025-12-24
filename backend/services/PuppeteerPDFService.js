@@ -261,9 +261,14 @@ class PuppeteerPDFService {
       pdfDoc.setCreationDate(new Date());
       pdfDoc.setModificationDate(new Date());
 
-      return await pdfDoc.save();
+      const saved = await pdfDoc.save();
+      if (Buffer.isBuffer(saved)) return saved;
+      if (saved instanceof Uint8Array) return Buffer.from(saved);
+      return Buffer.from(saved);
     } catch (e) {
-      return pdfBuffer;
+      if (Buffer.isBuffer(pdfBuffer)) return pdfBuffer;
+      if (pdfBuffer instanceof Uint8Array) return Buffer.from(pdfBuffer);
+      return Buffer.from(pdfBuffer);
     }
   }
 

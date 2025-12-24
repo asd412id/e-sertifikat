@@ -277,4 +277,34 @@ export const certificateService = {
       throw error;
     }
   },
+
+  // Preview individual certificate PDF (does NOT increment downloadCount)
+  previewCertificatePDF: async (templateId, participantId) => {
+    try {
+      const response = await api.post(
+        `/certificates/templates/${templateId}/participants/${participantId}/preview-pdf`,
+        {},
+        {
+          responseType: 'blob',
+          timeout: 300000
+        }
+      );
+
+      if (response.data && response.data.size > 0) {
+        return response.data;
+      }
+      throw new Error('File PDF kosong atau tidak valid');
+    } catch (error) {
+      if (error.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const err = JSON.parse(text);
+          throw new Error(err?.error || 'Gagal preview sertifikat');
+        } catch (e) {
+          throw e;
+        }
+      }
+      throw error;
+    }
+  },
 };

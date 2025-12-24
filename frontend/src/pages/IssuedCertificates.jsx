@@ -37,10 +37,12 @@ import {
   VerifiedOutlined,
   SearchOutlined,
   DownloadOutlined,
+  PictureAsPdf,
   InfoOutlined,
   Close
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import PdfPreviewDialog from '../components/PdfPreviewDialog';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -48,6 +50,7 @@ const IssuedCertificates = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
   const [downloadLoading, setDownloadLoading] = useState('');
+  const [previewLoading, setPreviewLoading] = useState('');
   const [refreshLoading, setRefreshLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -58,6 +61,11 @@ const IssuedCertificates = () => {
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState(null);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewDialogTitle, setPreviewDialogTitle] = useState('Preview Sertifikat');
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState('');
@@ -115,6 +123,61 @@ const IssuedCertificates = () => {
     }
   };
 
+  const previewIssuedCertificate = async (row) => {
+    const templateId = row?.templateUuid;
+    const participantId = row?.participantUuid;
+    const previewKey = `preview:${String(templateId || '')}:${String(participantId || '')}`;
+    try {
+      if (!templateId || !participantId) {
+        toast.error('Template atau peserta tidak ditemukan');
+        return;
+      }
+
+      setPreviewLoading(previewKey);
+      setPreviewError('');
+      setPreviewBlob(null);
+      setPreviewDialogTitle(`Preview Sertifikat - ${row?.participantUuid || 'Peserta'}`);
+
+      const res = await api.post(
+        `/certificates/templates/${templateId}/participants/${participantId}/preview-pdf`,
+        {},
+        {
+          responseType: 'blob',
+          timeout: 90000
+        }
+      );
+
+      const contentType = String(res?.headers?.['content-type'] || res?.headers?.['Content-Type'] || '').toLowerCase();
+      const isBlob = (typeof Blob !== 'undefined') && (res.data instanceof Blob);
+      const blob = isBlob
+        ? res.data
+        : new Blob([res.data], { type: contentType || 'application/pdf' });
+
+      if (!blob || !blob.size) {
+        throw new Error('File PDF kosong atau tidak valid');
+      }
+
+      if (contentType.includes('application/json') || contentType.includes('text/plain')) {
+        const text = await blob.text();
+        try {
+          const parsed = JSON.parse(text);
+          throw new Error(parsed?.error || 'Terjadi kesalahan saat memproses sertifikat');
+        } catch (err) {
+          throw err;
+        }
+      }
+
+      setPreviewBlob(blob);
+      setPreviewOpen(true);
+    } catch (e) {
+      const msg = e?.response?.data?.error || e?.message || 'Gagal preview sertifikat';
+      toast.error(msg);
+      setPreviewError(msg);
+    } finally {
+      setPreviewLoading('');
+    }
+  };
+
   const openDetail = (row) => {
     setSelectedRow(row || null);
     setDetailOpen(true);
@@ -123,6 +186,13 @@ const IssuedCertificates = () => {
   const closeDetail = () => {
     setDetailOpen(false);
     setSelectedRow(null);
+  };
+
+  const closePreview = () => {
+    if (previewLoading) return;
+    setPreviewOpen(false);
+    setPreviewBlob(null);
+    setPreviewError('');
   };
 
   const openConfirm = (action) => {
@@ -363,8 +433,9 @@ const IssuedCertificates = () => {
           {items.map((row) => {
             const token = row.token;
             const st = String(row?.status || '').toLowerCase();
-            const disabled = !!actionLoading || !!downloadLoading || !!refreshLoading;
+            const disabled = !!actionLoading || !!downloadLoading || !!previewLoading || !!refreshLoading;
             const isDownloading = downloadLoading === `download:${String(row?.templateUuid || '')}:${String(row?.participantUuid || '')}`;
+            const isPreviewing = previewLoading === `preview:${String(row?.templateUuid || '')}:${String(row?.participantUuid || '')}`;
 
             return (
               <Card key={token} variant="outlined" sx={{ borderRadius: 3 }}>
@@ -403,7 +474,7 @@ const IssuedCertificates = () => {
                       </Box>
                     </Stack>
 
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
                       <Button
                         fullWidth
                         size="small"
@@ -414,6 +485,17 @@ const IssuedCertificates = () => {
                         sx={{ borderRadius: 2, fontWeight: 900 }}
                       >
                         Download
+                      </Button>
+                      <Button
+                        fullWidth
+                        size="small"
+                        variant="outlined"
+                        startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdf />}
+                        disabled={disabled || st === 'deleted' || isPreviewing}
+                        onClick={() => previewIssuedCertificate(row)}
+                        sx={{ borderRadius: 2, fontWeight: 900 }}
+                      >
+                        Preview
                       </Button>
                       <Button
                         fullWidth
@@ -440,6 +522,15 @@ const IssuedCertificates = () => {
   return (
     <Layout>
       <Box>
+        <PdfPreviewDialog
+          open={previewOpen}
+          title={previewDialogTitle}
+          loading={Boolean(previewLoading)}
+          error={previewError}
+          blob={previewBlob}
+          onClose={closePreview}
+        />
+
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 2 }}>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 900 }}>
@@ -571,8 +662,9 @@ const IssuedCertificates = () => {
                         {(items || []).map((row, idx) => {
                           const token = row.token;
                           const st = String(row?.status || '').toLowerCase();
-                          const disabled = !!actionLoading || !!downloadLoading || !!refreshLoading;
+                          const disabled = !!actionLoading || !!downloadLoading || !!previewLoading || !!refreshLoading;
                           const isDownloading = downloadLoading === `download:${String(row?.templateUuid || '')}:${String(row?.participantUuid || '')}`;
+                          const isPreviewing = previewLoading === `preview:${String(row?.templateUuid || '')}:${String(row?.participantUuid || '')}`;
                           const rowNo = idx + 1 + (Number(pagination.currentPage || 1) - 1) * Number(pagination.limit || 10);
                           return (
                             <TableRow key={token} hover>
@@ -624,8 +716,9 @@ const IssuedCertificates = () => {
                               </TableCell>
                               <TableCell align="right">{Number(row.downloadCount || 0)}</TableCell>
                               <TableCell>
-                                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                                <Stack spacing={0.75} sx={{ width: 180, maxWidth: '100%' }}>
                                   <Button
+                                    fullWidth
                                     size="small"
                                     variant="contained"
                                     startIcon={isDownloading ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
@@ -635,16 +728,30 @@ const IssuedCertificates = () => {
                                   >
                                     Download
                                   </Button>
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    startIcon={<InfoOutlined />}
-                                    disabled={disabled}
-                                    onClick={() => openDetail(row)}
-                                    sx={{ borderRadius: 2, fontWeight: 800 }}
-                                  >
-                                    Detail
-                                  </Button>
+                                  <Stack direction="row" spacing={1}>
+                                    <Button
+                                      fullWidth
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdf />}
+                                      disabled={disabled || st === 'deleted' || isPreviewing}
+                                      onClick={() => previewIssuedCertificate(row)}
+                                      sx={{ borderRadius: 2, fontWeight: 800 }}
+                                    >
+                                      Preview
+                                    </Button>
+                                    <Button
+                                      fullWidth
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<InfoOutlined />}
+                                      disabled={disabled}
+                                      onClick={() => openDetail(row)}
+                                      sx={{ borderRadius: 2, fontWeight: 800 }}
+                                    >
+                                      Detail
+                                    </Button>
+                                  </Stack>
                                 </Stack>
                               </TableCell>
                             </TableRow>
@@ -779,6 +886,9 @@ const IssuedCertificates = () => {
               const isDownloading = selectedRow
                 ? (downloadLoading === `download:${String(selectedRow?.templateUuid || '')}:${String(selectedRow?.participantUuid || '')}`)
                 : false;
+              const isPreviewing = selectedRow
+                ? (previewLoading === `preview:${String(selectedRow?.templateUuid || '')}:${String(selectedRow?.participantUuid || '')}`)
+                : false;
               const approveKey = selectedRow?.token ? `approve:${selectedRow?.token}` : '';
               const revokeKey = selectedRow?.token ? `revoke:${selectedRow?.token}` : '';
               const deleteKey = selectedRow?.token ? `delete:${selectedRow?.token}` : '';
@@ -792,10 +902,20 @@ const IssuedCertificates = () => {
               variant="outlined"
               onClick={() => selectedRow && downloadIssuedCertificate(selectedRow)}
               startIcon={isDownloading ? <CircularProgress size={16} color="inherit" /> : <DownloadOutlined />}
-              disabled={!selectedRow || String(selectedRow?.status || '').toLowerCase() === 'deleted' || !!actionLoading || !!downloadLoading || isDownloading}
+              disabled={!selectedRow || String(selectedRow?.status || '').toLowerCase() === 'deleted' || !!actionLoading || !!downloadLoading || !!previewLoading || isDownloading}
               sx={{ borderRadius: 2, fontWeight: 900 }}
             >
               Download
+            </Button>
+
+            <Button
+              variant="outlined"
+              onClick={() => selectedRow && previewIssuedCertificate(selectedRow)}
+              startIcon={isPreviewing ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdf />}
+              disabled={!selectedRow || String(selectedRow?.status || '').toLowerCase() === 'deleted' || !!actionLoading || !!downloadLoading || !!previewLoading || isPreviewing}
+              sx={{ borderRadius: 2, fontWeight: 900 }}
+            >
+              Preview
             </Button>
             <Box sx={{ flex: 1 }} />
             <Button
