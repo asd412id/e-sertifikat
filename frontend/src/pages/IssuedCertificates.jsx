@@ -45,6 +45,7 @@ import {
 import Layout from '../components/Layout';
 import PdfPreviewDialog from '../components/PdfPreviewDialog';
 import api from '../services/api';
+import { eventService } from '../services/dataService';
 import toast from 'react-hot-toast';
 
 const IssuedCertificates = () => {
@@ -59,6 +60,10 @@ const IssuedCertificates = () => {
 
   const [items, setItems] = useState([]);
   const [events, setEvents] = useState([]);
+  const [eventOptionsLoading, setEventOptionsLoading] = useState(false);
+  const [eventSearchInput, setEventSearchInput] = useState('');
+  const didInitEventSearchEffect = useRef(false);
+  const eventSearchReasonRef = useRef('');
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState(null);
@@ -87,6 +92,38 @@ const IssuedCertificates = () => {
     if (val === 'all') return { uuid: 'all', title: 'Semua' };
     return (events || []).find((ev) => String(ev?.uuid) === val) || { uuid: val, title: val };
   }, [events, filters.eventId]);
+
+  const fetchEventOptions = async (search = '') => {
+    try {
+      setEventOptionsLoading(true);
+      const resp = await eventService.getEvents(1, 10, search);
+      const rows = resp?.data?.events || [];
+      setEvents(Array.isArray(rows) ? rows : []);
+    } catch (_) {
+      setEvents([]);
+    } finally {
+      setEventOptionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEventOptions('');
+  }, []);
+
+  useEffect(() => {
+    if (!didInitEventSearchEffect.current) {
+      didInitEventSearchEffect.current = true;
+      return;
+    }
+
+    if (eventSearchReasonRef.current !== 'input') return;
+
+    const handler = setTimeout(() => {
+      fetchEventOptions(String(eventSearchInput || ''));
+    }, 450);
+
+    return () => clearTimeout(handler);
+  }, [eventSearchInput]);
 
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -119,7 +156,6 @@ const IssuedCertificates = () => {
       const res = await api.get(`/certificates/issued?${qs.toString()}`);
       const data = res?.data?.data || {};
       setItems(Array.isArray(data.verifications) ? data.verifications : []);
-      setEvents(Array.isArray(data.events) ? data.events : []);
       setPagination({
         currentPage: data.currentPage || page,
         totalPages: data.totalPages || 1,
@@ -129,7 +165,6 @@ const IssuedCertificates = () => {
     } catch (e) {
       setError(e?.response?.data?.error || e?.message || 'Gagal memuat daftar sertifikat');
       setItems([]);
-      setEvents([]);
     } finally {
       if (!opts?.silent) setLoading(false);
     }
@@ -600,6 +635,18 @@ const IssuedCertificates = () => {
               options={eventOptions}
               value={selectedEventOption}
               onChange={(_, next) => setFilters((p) => ({ ...p, eventId: next?.uuid ? String(next.uuid) : 'all' }))}
+              inputValue={eventSearchInput}
+              onInputChange={(_, val, reason) => {
+                eventSearchReasonRef.current = reason;
+                setEventSearchInput(val);
+              }}
+              loading={eventOptionsLoading}
+              filterOptions={(x) => x}
+              onOpen={() => {
+                if ((events || []).length === 0 && !eventOptionsLoading) {
+                  fetchEventOptions(String(eventSearchInput || ''));
+                }
+              }}
               getOptionLabel={(ev) => (ev?.title ? String(ev.title) : '')}
               isOptionEqualToValue={(a, b) => String(a?.uuid) === String(b?.uuid)}
               renderInput={(params) => (
@@ -609,6 +656,12 @@ const IssuedCertificates = () => {
                   size="small"
                   InputProps={{
                     ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {eventOptionsLoading ? <CircularProgress color="inherit" size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
                     sx: {
                       '& input': { py: 1.25 }
                     }

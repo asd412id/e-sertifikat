@@ -248,6 +248,11 @@ const Certificates = () => {
   const [event, setEvent] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [participants, setParticipants] = useState([]);
+  const [participantsTotalCount, setParticipantsTotalCount] = useState(0);
+  const [participantOptionsLoading, setParticipantOptionsLoading] = useState(false);
+  const [participantSearchInput, setParticipantSearchInput] = useState('');
+  const participantSearchReasonRef = useRef('');
+  const didInitParticipantSearchEffect = useRef(false);
   const [loading, setLoading] = useState(true);
   const [publicDownloadSettings, setPublicDownloadSettings] = useState({
     enabled: false,
@@ -809,7 +814,7 @@ const Certificates = () => {
     if (eventId) {
       fetchEvent();
       fetchTemplates();
-      fetchParticipants();
+      fetchParticipants('');
     }
   }, [eventId]);
 
@@ -1046,23 +1051,43 @@ const Certificates = () => {
     }
   };
 
-  const fetchParticipants = async () => {
+  const fetchParticipants = async (search = '') => {
     try {
-      const response = await participantService.getParticipants(eventId);
+      setParticipantOptionsLoading(true);
+      const response = await participantService.getParticipants(eventId, 1, 10, search);
       setParticipants(response.data.participants);
+      setParticipantsTotalCount(Number(response.data.totalCount || 0));
     } catch (error) {
       console.error('Gagal memuat peserta');
+      setParticipants([]);
+      setParticipantsTotalCount(0);
+    } finally {
+      setParticipantOptionsLoading(false);
     }
   };
 
-  const openPreviewPicker = (template) => {
-    if (!participants || participants.length === 0) {
-      toast.error('Tidak ada peserta untuk dipreview');
+  useEffect(() => {
+    if (!previewPickerOpen) return;
+    if (!didInitParticipantSearchEffect.current) {
+      didInitParticipantSearchEffect.current = true;
       return;
     }
+
+    if (participantSearchReasonRef.current !== 'input') return;
+
+    const handler = setTimeout(() => {
+      fetchParticipants(String(participantSearchInput || ''));
+    }, 450);
+
+    return () => clearTimeout(handler);
+  }, [participantSearchInput, previewPickerOpen]);
+
+  const openPreviewPicker = (template) => {
     setPreviewPickerTemplate(template || null);
     setPreviewPickerParticipantId('');
+    setParticipantSearchInput('');
     setPreviewPickerOpen(true);
+    fetchParticipants('');
   };
 
   const runPreviewFromPicker = async () => {
@@ -1079,7 +1104,17 @@ const Certificates = () => {
       }
 
       const participant = (participants || []).find((p) => String(p?.uuid) === participantId);
-      const participantName = participant?.data?.nama || participant?.data?.name || participantId;
+      let participantName = participant?.data?.nama || participant?.data?.name || participantId;
+      if (participantName === participantId) {
+        try {
+          const res = await participantService.getParticipant(participantId);
+          const p = res?.data?.participant;
+          const nm = p?.data?.nama || p?.data?.name;
+          if (nm) participantName = String(nm);
+        } catch (_) {
+          // ignore
+        }
+      }
 
       setPreviewing(true);
       setPreviewError('');
@@ -2295,6 +2330,7 @@ const Certificates = () => {
             setPreviewPickerOpen(false);
             setPreviewPickerTemplate(null);
             setPreviewPickerParticipantId('');
+            setParticipantSearchInput('');
           }}
           fullWidth
           maxWidth="sm"
@@ -2314,11 +2350,32 @@ const Certificates = () => {
               getOptionLabel={(p) => (p?.data?.nama || p?.data?.name || p?.uuid ? String(p?.data?.nama || p?.data?.name || p?.uuid) : '')}
               isOptionEqualToValue={(a, b) => String(a?.uuid) === String(b?.uuid)}
               disabled={previewing}
+              loading={participantOptionsLoading}
+              filterOptions={(x) => x}
+              inputValue={participantSearchInput}
+              onInputChange={(_, val, reason) => {
+                participantSearchReasonRef.current = reason;
+                setParticipantSearchInput(val);
+              }}
+              onOpen={() => {
+                if ((participants || []).length === 0 && !participantOptionsLoading) {
+                  fetchParticipants(String(participantSearchInput || ''));
+                }
+              }}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   label="Peserta"
                   size="small"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {participantOptionsLoading ? <CircularProgress color="inherit" size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    )
+                  }}
                 />
               )}
             />
@@ -2905,7 +2962,7 @@ const Certificates = () => {
                           size="medium"
                           startIcon={<PictureAsPdf />}
                           onClick={() => openPreviewPicker(template)}
-                          disabled={participants.length === 0 || previewing}
+                          disabled={participantsTotalCount === 0 || previewing}
                           sx={{
                             minHeight: 40,
                             borderRadius: 2,
@@ -2924,7 +2981,7 @@ const Certificates = () => {
                         size="medium"
                         startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <GetApp />}
                         onClick={() => handleDownloadAll(template.uuid)}
-                        disabled={generating || participants.length === 0}
+                        disabled={generating || participantsTotalCount === 0}
                         sx={{ minHeight: 40, borderRadius: 2, fontWeight: 700 }}
                       >
                         Download Semua
