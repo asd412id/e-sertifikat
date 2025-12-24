@@ -38,7 +38,22 @@ const PdfPreviewDialog = ({
   }, [open]);
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth={false}
+      PaperProps={{
+        sx: {
+          width: '96vw',
+          maxWidth: 1280,
+          height: '92vh',
+          maxHeight: '92vh',
+          display: 'flex',
+          flexDirection: 'column'
+        }
+      }}
+    >
       <DialogTitle sx={{ fontWeight: 950, pr: 6 }}>
         {title}
         <IconButton onClick={onClose} size="small" sx={{ position: 'absolute', right: 12, top: 12 }}>
@@ -46,9 +61,9 @@ const PdfPreviewDialog = ({
         </IconButton>
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 0 }}>
+      <DialogContent sx={{ p: 0, overflow: 'hidden', flex: 1 }}>
         {loading ? (
-          <Box display="flex" alignItems="center" justifyContent="center" minHeight={520}>
+          <Box display="flex" alignItems="center" justifyContent="center" height="100%">
             <CircularProgress />
           </Box>
         ) : error ? (
@@ -58,7 +73,7 @@ const PdfPreviewDialog = ({
             </Typography>
           </Box>
         ) : objectUrl ? (
-          <Box sx={{ height: { xs: 520, md: 640 }, width: '100%' }}>
+          <Box sx={{ height: '100%', width: '100%' }}>
             <iframe
               title="pdf-preview"
               src={objectUrl}
