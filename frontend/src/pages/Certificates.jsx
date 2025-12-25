@@ -531,12 +531,9 @@ const Certificates = () => {
   const [copyTemplateName, setCopyTemplateName] = useState('');
   const [copyingTemplate, setCopyingTemplate] = useState(false);
   const [copyTargetEventId, setCopyTargetEventId] = useState('');
-  const [copyEvents, setCopyEvents] = useState([]);
-<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
-=======
   const [copyTargetEvent, setCopyTargetEvent] = useState(null);
   const [copyEventSearch, setCopyEventSearch] = useState('');
->>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
+  const [copyEvents, setCopyEvents] = useState([]);
 
   const [deleteTemplateConfirmOpen, setDeleteTemplateConfirmOpen] = useState(false);
   const [deleteTemplateId, setDeleteTemplateId] = useState('');
@@ -2138,20 +2135,6 @@ const Certificates = () => {
     setSelectedTemplate(template);
     setCopyTemplateName(`${template.name} (Copy)`);
     setCopyTargetEventId(eventId || '');
-<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
-    setCopyDialogOpen(true);
-    setAnchorEl(null);
-    loadCopyEvents();
-  };
-
-  const loadCopyEvents = async () => {
-    try {
-      setLoadingCopyEvents(true);
-      const resp = await eventService.getEvents(1, 1000, '');
-      const rows = resp?.data?.events || [];
-      const list = Array.isArray(rows) ? rows : [];
-      setCopyEvents(list);
-=======
     setCopyTargetEvent({
       uuid: eventId || '',
       title: 'Kegiatan saat ini',
@@ -2173,7 +2156,6 @@ const Certificates = () => {
         .filter((ev) => ev && ev.uuid)
         .filter((ev) => ev.uuid !== (eventId || ''));
       setCopyEvents(normalized);
->>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
     } catch (_) {
       setCopyEvents([]);
     } finally {
@@ -2181,15 +2163,12 @@ const Certificates = () => {
     }
   };
 
-<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
-=======
   useEffect(() => {
     if (!copyDialogOpen) return;
     const search = String(copyEventSearch || '').trim();
     scheduleUpdate('copyEventSearch', () => loadCopyEvents(search), 300);
   }, [copyDialogOpen, copyEventSearch]);
 
->>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
   const handleCopyTemplate = async () => {
     if (!selectedTemplate?.uuid) return;
     const name = String(copyTemplateName || '').trim();
@@ -3092,12 +3071,9 @@ const Certificates = () => {
             setCopyDialogOpen(false);
             setCopyTemplateName('');
             setCopyTargetEventId('');
-<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
-=======
             setCopyTargetEvent(null);
             setCopyEventSearch('');
             setCopyEvents([]);
->>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
           }}
           maxWidth="sm"
           fullWidth
@@ -3105,28 +3081,6 @@ const Certificates = () => {
         >
           <DialogTitle sx={{ fontWeight: 'bold' }}>Salin Template Sertifikat</DialogTitle>
           <DialogContent sx={{ pt: 1.5 }}>
-<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
-            <FormControl fullWidth size="small" margin="dense">
-              <InputLabel id="copy-target-event-label">
-                Kegiatan Tujuan
-              </InputLabel>
-              <Select
-                labelId="copy-target-event-label"
-                label="Kegiatan Tujuan"
-                value={copyTargetEventId}
-                onChange={(e) => setCopyTargetEventId(e.target.value)}
-                displayEmpty
-                disabled={loadingCopyEvents || copyingTemplate}
-              >
-                <MenuItem value={eventId || ''}>Kegiatan saat ini</MenuItem>
-                {(copyEvents || [])
-                  .filter((ev) => ev && ev.uuid && ev.uuid !== eventId)
-                  .map((ev) => (
-                    <MenuItem key={ev.uuid} value={ev.uuid}>{ev.title}</MenuItem>
-                  ))}
-              </Select>
-            </FormControl>
-=======
             <Autocomplete
               size="small"
               fullWidth
@@ -3166,7 +3120,6 @@ const Certificates = () => {
                 />
               )}
             />
->>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
             <TextField
               fullWidth
               label="Nama Template Baru"
@@ -3182,12 +3135,9 @@ const Certificates = () => {
                 setCopyDialogOpen(false);
                 setCopyTemplateName('');
                 setCopyTargetEventId('');
-<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
-=======
                 setCopyTargetEvent(null);
                 setCopyEventSearch('');
                 setCopyEvents([]);
->>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
               }}
               sx={{ borderRadius: 2 }}
               disabled={copyingTemplate}
