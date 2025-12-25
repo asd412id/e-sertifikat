@@ -67,7 +67,11 @@ const Assets = () => {
     currentPage: 1,
     totalPages: 1,
     totalCount: 0,
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Assets.jsx
     limit: 50
+=======
+    limit: 54
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-8f22cb08\frontend\src\pages\Assets.jsx
   });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -286,7 +290,11 @@ const Assets = () => {
       closeDeleteDialog();
 
       const nextTotal = Math.max(0, (pagination.totalCount || 0) - 1);
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Assets.jsx
       const nextTotalPages = Math.max(1, Math.ceil(nextTotal / (pagination.limit || 50)));
+=======
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / (pagination.limit || 54)));
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-8f22cb08\frontend\src\pages\Assets.jsx
       const nextPage = Math.min(pagination.currentPage || 1, nextTotalPages);
       await fetchAssets(nextPage);
     } catch (e) {

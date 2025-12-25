@@ -532,6 +532,11 @@ const Certificates = () => {
   const [copyingTemplate, setCopyingTemplate] = useState(false);
   const [copyTargetEventId, setCopyTargetEventId] = useState('');
   const [copyEvents, setCopyEvents] = useState([]);
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
+=======
+  const [copyTargetEvent, setCopyTargetEvent] = useState(null);
+  const [copyEventSearch, setCopyEventSearch] = useState('');
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
 
   const [deleteTemplateConfirmOpen, setDeleteTemplateConfirmOpen] = useState(false);
   const [deleteTemplateId, setDeleteTemplateId] = useState('');
@@ -2133,6 +2138,7 @@ const Certificates = () => {
     setSelectedTemplate(template);
     setCopyTemplateName(`${template.name} (Copy)`);
     setCopyTargetEventId(eventId || '');
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
     setCopyDialogOpen(true);
     setAnchorEl(null);
     loadCopyEvents();
@@ -2145,6 +2151,29 @@ const Certificates = () => {
       const rows = resp?.data?.events || [];
       const list = Array.isArray(rows) ? rows : [];
       setCopyEvents(list);
+=======
+    setCopyTargetEvent({
+      uuid: eventId || '',
+      title: 'Kegiatan saat ini',
+      __current: true
+    });
+    setCopyEventSearch('');
+    setCopyDialogOpen(true);
+    setAnchorEl(null);
+    loadCopyEvents('');
+  };
+
+  const loadCopyEvents = async (search = '') => {
+    try {
+      setLoadingCopyEvents(true);
+      const resp = await eventService.getEvents(1, 10, search);
+      const rows = resp?.data?.events || [];
+      const list = Array.isArray(rows) ? rows : [];
+      const normalized = list
+        .filter((ev) => ev && ev.uuid)
+        .filter((ev) => ev.uuid !== (eventId || ''));
+      setCopyEvents(normalized);
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
     } catch (_) {
       setCopyEvents([]);
     } finally {
@@ -2152,6 +2181,15 @@ const Certificates = () => {
     }
   };
 
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
+=======
+  useEffect(() => {
+    if (!copyDialogOpen) return;
+    const search = String(copyEventSearch || '').trim();
+    scheduleUpdate('copyEventSearch', () => loadCopyEvents(search), 300);
+  }, [copyDialogOpen, copyEventSearch]);
+
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
   const handleCopyTemplate = async () => {
     if (!selectedTemplate?.uuid) return;
     const name = String(copyTemplateName || '').trim();
@@ -3054,6 +3092,12 @@ const Certificates = () => {
             setCopyDialogOpen(false);
             setCopyTemplateName('');
             setCopyTargetEventId('');
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
+=======
+            setCopyTargetEvent(null);
+            setCopyEventSearch('');
+            setCopyEvents([]);
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
           }}
           maxWidth="sm"
           fullWidth
@@ -3061,6 +3105,7 @@ const Certificates = () => {
         >
           <DialogTitle sx={{ fontWeight: 'bold' }}>Salin Template Sertifikat</DialogTitle>
           <DialogContent sx={{ pt: 1.5 }}>
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
             <FormControl fullWidth size="small" margin="dense">
               <InputLabel id="copy-target-event-label">
                 Kegiatan Tujuan
@@ -3081,6 +3126,47 @@ const Certificates = () => {
                   ))}
               </Select>
             </FormControl>
+=======
+            <Autocomplete
+              size="small"
+              fullWidth
+              options={[
+                {
+                  uuid: eventId || '',
+                  title: 'Kegiatan saat ini',
+                  __current: true
+                },
+                ...(copyEvents || [])
+              ]}
+              value={copyTargetEvent}
+              inputValue={copyEventSearch}
+              loading={loadingCopyEvents}
+              disabled={copyingTemplate}
+              onInputChange={(_, v) => setCopyEventSearch(v)}
+              onChange={(_, v) => {
+                setCopyTargetEvent(v);
+                setCopyTargetEventId(v?.uuid || '');
+              }}
+              isOptionEqualToValue={(option, value) => option?.uuid === value?.uuid}
+              getOptionLabel={(option) => String(option?.title || '')}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Kegiatan Tujuan"
+                  margin="dense"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {loadingCopyEvents ? <CircularProgress color="inherit" size={18} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    )
+                  }}
+                />
+              )}
+            />
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
             <TextField
               fullWidth
               label="Nama Template Baru"
@@ -3096,6 +3182,12 @@ const Certificates = () => {
                 setCopyDialogOpen(false);
                 setCopyTemplateName('');
                 setCopyTargetEventId('');
+<<<<<<< D:\PROJECTS\e_sertifikat\frontend\src\pages\Certificates.jsx
+=======
+                setCopyTargetEvent(null);
+                setCopyEventSearch('');
+                setCopyEvents([]);
+>>>>>>> c:\Users\asd412id\.windsurf\worktrees\e_sertifikat\e_sertifikat-352e8184\frontend\src\pages\Certificates.jsx
               }}
               sx={{ borderRadius: 2 }}
               disabled={copyingTemplate}
