@@ -67,7 +67,7 @@ const Assets = () => {
     currentPage: 1,
     totalPages: 1,
     totalCount: 0,
-    limit: 54
+    limit: 48
   });
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -286,7 +286,7 @@ const Assets = () => {
       closeDeleteDialog();
 
       const nextTotal = Math.max(0, (pagination.totalCount || 0) - 1);
-      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / (pagination.limit || 54)));
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / (pagination.limit || 48)));
       const nextPage = Math.min(pagination.currentPage || 1, nextTotalPages);
       await fetchAssets(nextPage);
     } catch (e) {
