@@ -280,9 +280,22 @@ const Profile = () => {
 
   const getProviderDisplayName = (providerId) => {
     const names = {
-      simpatik: 'SIMPATIK'
+      simpatik: 'SIMPATIK',
+      google: 'Google',
+      microsoft: 'Microsoft',
+      github: 'GitHub'
     };
     return names[providerId] || providerId.toUpperCase();
+  };
+
+  const getProviderColor = (providerId) => {
+    const colors = {
+      simpatik: '#2d4b81',
+      google: '#4285f4',
+      microsoft: '#00a4ef',
+      github: '#24292e'
+    };
+    return colors[providerId] || '#1976d2';
   };
 
 
@@ -724,7 +737,7 @@ const Profile = () => {
                             sx={{
                               width: 48,
                               height: 48,
-                              bgcolor: '#2d4b81',
+                              bgcolor: getProviderColor(provider.id),
                               fontSize: '0.9rem',
                               fontWeight: 700
                             }}
@@ -788,8 +801,8 @@ const Profile = () => {
                               sx={{
                                 borderRadius: 2,
                                 fontWeight: 600,
-                                backgroundColor: '#2d4b81',
-                                '&:hover': { backgroundColor: '#1a365d' }
+                                backgroundColor: getProviderColor(provider.id),
+                                '&:hover': { backgroundColor: getProviderColor(provider.id), filter: 'brightness(0.85)' }
                               }}
                             >
                               {ssoLoading ? 'Menghubungkan...' : 'Hubungkan'}

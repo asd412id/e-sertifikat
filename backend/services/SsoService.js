@@ -1,17 +1,14 @@
 const crypto = require('crypto');
 
 /**
- * SSO Service for AMDPT/SIMPATIK Integration
+ * SSO Service for Multiple Provider Integration
  * Handles OAuth2 Authorization Code flow
  * 
- * Based on AMDPT SSO API v2.1.0 Documentation
- * Base URL: https://app.maccaqe.id
- * API Prefix: /api/v1
- * 
- * Endpoints:
- * - Authorization: GET /api/v1/sso/authorize
- * - Token Exchange: POST /api/v1/sso/token
- * - User Info: GET /api/v1/sso/userinfo
+ * Supported Providers:
+ * - SIMPATIK (AMDPT SSO API v2.1.0)
+ * - Google (OAuth 2.0)
+ * - Microsoft (Azure AD OAuth 2.0)
+ * - GitHub (OAuth 2.0)
  */
 class SsoService {
   constructor() {
@@ -26,7 +23,7 @@ class SsoService {
   /**
    * Get SSO provider configuration
    */
-  getProviderConfig(provider = 'simpatik') {
+  getProviderConfig(provider) {
     const configs = {
       simpatik: {
         name: 'SIMPATIK',
@@ -36,11 +33,56 @@ class SsoService {
         baseUrl: process.env.SSO_SIMPATIK_BASE_URL || 'https://app.maccaqe.id',
         redirectUri: process.env.SSO_SIMPATIK_REDIRECT_URI,
         scopes: (process.env.SSO_SIMPATIK_SCOPES || 'openid profile email').split(' '),
-        // Endpoints based on AMDPT SSO API v2.1.0 documentation
-        // API prefix is /api/v1
         authorizePath: process.env.SSO_SIMPATIK_AUTHORIZE_PATH || '/api/v1/sso/authorize',
         tokenPath: process.env.SSO_SIMPATIK_TOKEN_PATH || '/api/v1/sso/token',
-        userInfoPath: process.env.SSO_SIMPATIK_USERINFO_PATH || '/api/v1/sso/userinfo'
+        userInfoPath: process.env.SSO_SIMPATIK_USERINFO_PATH || '/api/v1/sso/userinfo',
+        tokenContentType: 'json' // SIMPATIK uses JSON
+      },
+      google: {
+        name: 'Google',
+        enabled: process.env.SSO_GOOGLE_ENABLED === 'true',
+        clientId: process.env.SSO_GOOGLE_CLIENT_ID,
+        clientSecret: process.env.SSO_GOOGLE_CLIENT_SECRET,
+        baseUrl: 'https://accounts.google.com',
+        redirectUri: process.env.SSO_GOOGLE_REDIRECT_URI,
+        scopes: ['openid', 'email', 'profile'],
+        authorizePath: '/o/oauth2/v2/auth',
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        userInfoUrl: 'https://www.googleapis.com/oauth2/v3/userinfo',
+        tokenContentType: 'form',
+        useResponseType: true,
+        useScopeParam: true
+      },
+      microsoft: {
+        name: 'Microsoft',
+        enabled: process.env.SSO_MICROSOFT_ENABLED === 'true',
+        clientId: process.env.SSO_MICROSOFT_CLIENT_ID,
+        clientSecret: process.env.SSO_MICROSOFT_CLIENT_SECRET,
+        tenant: process.env.SSO_MICROSOFT_TENANT || 'common',
+        get baseUrl() { return `https://login.microsoftonline.com/${this.tenant}`; },
+        redirectUri: process.env.SSO_MICROSOFT_REDIRECT_URI,
+        scopes: ['openid', 'email', 'profile', 'User.Read'],
+        authorizePath: '/oauth2/v2.0/authorize',
+        tokenPath: '/oauth2/v2.0/token',
+        userInfoUrl: 'https://graph.microsoft.com/v1.0/me',
+        tokenContentType: 'form',
+        useResponseType: true,
+        useScopeParam: true
+      },
+      github: {
+        name: 'GitHub',
+        enabled: process.env.SSO_GITHUB_ENABLED === 'true',
+        clientId: process.env.SSO_GITHUB_CLIENT_ID,
+        clientSecret: process.env.SSO_GITHUB_CLIENT_SECRET,
+        baseUrl: 'https://github.com',
+        redirectUri: process.env.SSO_GITHUB_REDIRECT_URI,
+        scopes: ['read:user', 'user:email'],
+        authorizePath: '/login/oauth/authorize',
+        tokenUrl: 'https://github.com/login/oauth/access_token',
+        userInfoUrl: 'https://api.github.com/user',
+        emailsUrl: 'https://api.github.com/user/emails',
+        tokenContentType: 'form',
+        useScopeParam: true
       }
     };
 
@@ -55,7 +97,7 @@ class SsoService {
   /**
    * Check if SSO provider is enabled and properly configured
    */
-  isProviderEnabled(provider = 'simpatik') {
+  isProviderEnabled(provider) {
     try {
       const config = this.getProviderConfig(provider);
       return config.enabled && config.clientId && config.clientSecret && config.redirectUri;
@@ -136,51 +178,57 @@ class SsoService {
       state: state
     });
 
+    // Add response_type for OAuth2 providers that need it
+    if (config.useResponseType) {
+      params.append('response_type', 'code');
+    }
+
+    // Add scope for providers that need it
+    if (config.useScopeParam && config.scopes) {
+      params.append('scope', config.scopes.join(' '));
+    }
+
     return `${config.baseUrl}${config.authorizePath}?${params.toString()}`;
   }
 
   /**
    * Exchange authorization code for access token
-   * Based on AMDPT SSO API v2.1.0 documentation
    * @param {string} provider - Provider name
    * @param {string} code - Authorization code from callback
    */
   async exchangeCodeForToken(provider, code) {
     const config = this.getProviderConfig(provider);
-    const tokenUrl = `${config.baseUrl}${config.tokenPath}`;
+    const tokenUrl = config.tokenUrl || `${config.baseUrl}${config.tokenPath}`;
 
-    // Request body
     const bodyData = {
       code: code,
       client_id: config.clientId,
       client_secret: config.clientSecret,
-      redirect_uri: config.redirectUri
+      redirect_uri: config.redirectUri,
+      grant_type: 'authorization_code'
     };
 
-    console.log(`[SSO] Token exchange URL: ${tokenUrl}`);
-    console.log(`[SSO] Token exchange params: code=***, client_id=${config.clientId}, redirect_uri=${config.redirectUri}`);
+    console.log(`[SSO:${provider}] Token exchange URL: ${tokenUrl}`);
 
     try {
-      // Try JSON format first (some servers prefer this despite docs saying form-urlencoded)
-      let response = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(bodyData)
-      });
-
-      console.log(`[SSO] Token response status (JSON): ${response.status}`);
-
-      // If JSON fails with 415, try form-urlencoded
-      if (response.status === 415) {
-        console.log(`[SSO] JSON format rejected, trying form-urlencoded...`);
+      let response;
+      
+      if (config.tokenContentType === 'json') {
+        // JSON format (SIMPATIK)
+        response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(bodyData)
+        });
+      } else {
+        // Form-urlencoded format (Google, Microsoft, GitHub)
         const params = new URLSearchParams();
-        params.append('code', code);
-        params.append('client_id', config.clientId);
-        params.append('client_secret', config.clientSecret);
-        params.append('redirect_uri', config.redirectUri);
+        Object.entries(bodyData).forEach(([key, value]) => {
+          params.append(key, value);
+        });
 
         response = await fetch(tokenUrl, {
           method: 'POST',
@@ -190,13 +238,14 @@ class SsoService {
           },
           body: params.toString()
         });
-        console.log(`[SSO] Token response status (form-urlencoded): ${response.status}`);
       }
+
+      console.log(`[SSO:${provider}] Token response status: ${response.status}`);
 
       const responseText = await response.text();
       
       if (!response.ok) {
-        console.error(`[SSO] Token exchange failed: ${response.status} ${responseText}`);
+        console.error(`[SSO:${provider}] Token exchange failed: ${response.status} ${responseText}`);
         throw new Error(`Token exchange failed: ${response.status}`);
       }
 
@@ -204,13 +253,17 @@ class SsoService {
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        console.error(`[SSO] Failed to parse token response: ${responseText}`);
-        throw new Error('Invalid JSON response from token endpoint');
+        // GitHub might return form-urlencoded
+        if (responseText.includes('access_token=')) {
+          data = Object.fromEntries(new URLSearchParams(responseText));
+        } else {
+          console.error(`[SSO:${provider}] Failed to parse token response: ${responseText}`);
+          throw new Error('Invalid response from token endpoint');
+        }
       }
 
-      console.log(`[SSO] Token exchange success, got access_token: ${data.access_token ? 'yes' : 'no'}`);
+      console.log(`[SSO:${provider}] Token exchange success, got access_token: ${data.access_token ? 'yes' : 'no'}`);
 
-      // AMDPT response includes: access_token, token_type, expires_in, id_token, user
       if (!data.access_token) {
         throw new Error('No access token in response');
       }
@@ -222,11 +275,10 @@ class SsoService {
         refreshToken: data.refresh_token || null,
         idToken: data.id_token || null,
         scope: data.scope || null,
-        // AMDPT also returns user object directly
-        user: data.user || null
+        user: data.user || null // SIMPATIK returns user directly
       };
     } catch (error) {
-      console.error('[SSO] Token exchange error:', error);
+      console.error(`[SSO:${provider}] Token exchange error:`, error);
       throw new Error(`Failed to exchange code for token: ${error.message}`);
     }
   }
@@ -238,7 +290,7 @@ class SsoService {
    */
   async getUserInfo(provider, accessToken) {
     const config = this.getProviderConfig(provider);
-    const userInfoUrl = `${config.baseUrl}${config.userInfoPath}`;
+    const userInfoUrl = config.userInfoUrl || `${config.baseUrl}${config.userInfoPath}`;
 
     try {
       const response = await fetch(userInfoUrl, {
@@ -251,41 +303,114 @@ class SsoService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`SSO userinfo failed: ${response.status} ${errorText}`);
+        console.error(`[SSO:${provider}] Userinfo failed: ${response.status} ${errorText}`);
         throw new Error(`Failed to get user info: ${response.status}`);
       }
 
-      const data = await response.json();
+      let data = await response.json();
 
-      // Normalize user info based on documentation response:
-      // { "sub": "uuid-user", "name": "Nama User", "email": "email@example.com", ... }
+      // GitHub: Need to fetch email separately if not public
+      if (provider === 'github' && !data.email && config.emailsUrl) {
+        data.email = await this._fetchGitHubEmail(accessToken, config.emailsUrl);
+      }
+
       return this.normalizeUserInfo(provider, data);
     } catch (error) {
-      console.error('SSO userinfo error:', error);
+      console.error(`[SSO:${provider}] Userinfo error:`, error);
       throw new Error(`Failed to get user info: ${error.message}`);
     }
   }
 
   /**
+   * Fetch primary email from GitHub (emails might not be in user profile)
+   */
+  async _fetchGitHubEmail(accessToken, emailsUrl) {
+    try {
+      const response = await fetch(emailsUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const emails = await response.json();
+        // Find primary email or first verified email
+        const primary = emails.find(e => e.primary && e.verified);
+        const verified = emails.find(e => e.verified);
+        return primary?.email || verified?.email || emails[0]?.email || null;
+      }
+    } catch (error) {
+      console.error('[SSO:github] Failed to fetch emails:', error);
+    }
+    return null;
+  }
+
+  /**
    * Normalize user info from different providers to a standard format
-   * AMDPT returns: { sub, name, email, role }
    */
   normalizeUserInfo(provider, rawData) {
-    // Standard fields mapping based on AMDPT SSO docs
-    const normalized = {
-      provider,
-      providerId: rawData.sub || rawData.id || rawData.user_id,
-      email: rawData.email || null,
-      emailVerified: rawData.email_verified !== false, // Assume verified if not specified
-      name: rawData.name || rawData.full_name || rawData.fullName || null,
-      username: rawData.username || rawData.preferred_username || rawData.email?.split('@')[0] || null,
-      picture: rawData.picture || rawData.avatar || null,
-      role: rawData.role || null, // AMDPT specific: user role (PTK, SEKOLAH, etc.)
-      raw: rawData // Keep raw data for debugging/additional fields
-    };
+    let normalized;
+
+    switch (provider) {
+      case 'google':
+        normalized = {
+          provider,
+          providerId: rawData.sub,
+          email: rawData.email,
+          emailVerified: rawData.email_verified === true,
+          name: rawData.name,
+          username: rawData.email?.split('@')[0],
+          picture: rawData.picture,
+          raw: rawData
+        };
+        break;
+
+      case 'microsoft':
+        normalized = {
+          provider,
+          providerId: rawData.id,
+          email: rawData.mail || rawData.userPrincipalName,
+          emailVerified: true, // Microsoft emails are verified
+          name: rawData.displayName,
+          username: rawData.userPrincipalName?.split('@')[0] || rawData.mail?.split('@')[0],
+          picture: null, // Microsoft Graph needs separate call for photo
+          raw: rawData
+        };
+        break;
+
+      case 'github':
+        normalized = {
+          provider,
+          providerId: String(rawData.id),
+          email: rawData.email,
+          emailVerified: true, // We only get verified emails
+          name: rawData.name || rawData.login,
+          username: rawData.login,
+          picture: rawData.avatar_url,
+          raw: rawData
+        };
+        break;
+
+      case 'simpatik':
+      default:
+        normalized = {
+          provider,
+          providerId: rawData.sub || rawData.id || rawData.user_id,
+          email: rawData.email,
+          emailVerified: rawData.email_verified !== false,
+          name: rawData.name || rawData.full_name || rawData.fullName,
+          username: rawData.username || rawData.preferred_username || rawData.email?.split('@')[0],
+          picture: rawData.picture || rawData.avatar,
+          role: rawData.role,
+          raw: rawData
+        };
+        break;
+    }
 
     if (!normalized.providerId) {
-      throw new Error('No user ID (sub) in SSO response');
+      throw new Error('No user ID in SSO response');
     }
 
     return normalized;
@@ -295,7 +420,7 @@ class SsoService {
    * Get list of available SSO providers with their status
    */
   getAvailableProviders() {
-    const providers = ['simpatik'];
+    const providers = ['simpatik', 'google', 'microsoft', 'github'];
     return providers.map(provider => {
       try {
         const config = this.getProviderConfig(provider);
