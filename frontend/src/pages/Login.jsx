@@ -146,16 +146,20 @@ const Login = () => {
     const providers = {
       simpatik: {
         name: 'SIMPATIK',
-        color: '#2d4b81',
-        bgColor: 'rgba(45, 75, 129, 0.08)',
-        hoverBg: 'rgba(45, 75, 129, 0.15)',
-        icon: null
+        color: '#2ebcbc',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 48 48">
+            <path fill="#2ebcbc" d="M0 0h48v48H0z"/>
+            <path fill="#fff" d="M8 8l12 8-12 8V8z"/>
+            <path fill="#fff" d="M20 8l-12 8 12 8V8z"/>
+            <text x="24" y="22" fill="#fff" fontFamily="Arial, sans-serif" fontSize="14" fontWeight="bold">S</text>
+            <text x="32" y="38" fill="#fff" fontFamily="Arial, sans-serif" fontSize="14" fontWeight="bold">K</text>
+          </svg>
+        )
       },
       google: {
         name: 'Google',
-        color: '#4285f4',
-        bgColor: 'rgba(66, 133, 244, 0.08)',
-        hoverBg: 'rgba(66, 133, 244, 0.15)',
+        color: '#757575',
         icon: (
           <svg width="18" height="18" viewBox="0 0 48 48">
             <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
@@ -167,9 +171,7 @@ const Login = () => {
       },
       microsoft: {
         name: 'Microsoft',
-        color: '#00a4ef',
-        bgColor: 'rgba(0, 164, 239, 0.08)',
-        hoverBg: 'rgba(0, 164, 239, 0.15)',
+        color: '#757575',
         icon: (
           <svg width="18" height="18" viewBox="0 0 48 48">
             <path fill="#f25022" d="M2 2h20v20H2z"/>
@@ -182,8 +184,6 @@ const Login = () => {
       github: {
         name: 'GitHub',
         color: '#24292e',
-        bgColor: 'rgba(36, 41, 46, 0.08)',
-        hoverBg: 'rgba(36, 41, 46, 0.15)',
         icon: (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -193,9 +193,7 @@ const Login = () => {
     };
     return providers[provider.id] || { 
       name: provider.name, 
-      color: '#1976d2',
-      bgColor: 'rgba(25, 118, 210, 0.08)',
-      hoverBg: 'rgba(25, 118, 210, 0.15)',
+      color: '#757575',
       icon: null
     };
   };
@@ -467,12 +465,12 @@ const Login = () => {
                                   py: 1.25,
                                   borderRadius: 2,
                                   fontWeight: 600,
-                                  borderColor: info.color,
-                                  color: info.color,
-                                  backgroundColor: info.bgColor,
+                                  borderColor: 'divider',
+                                  color: 'text.primary',
+                                  backgroundColor: 'transparent',
                                   '&:hover': {
-                                    borderColor: info.color,
-                                    backgroundColor: info.hoverBg,
+                                    borderColor: 'text.secondary',
+                                    backgroundColor: 'rgba(0, 0, 0, 0.04)',
                                   },
                                 }}
                               >
