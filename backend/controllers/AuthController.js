@@ -137,6 +137,44 @@ class AuthController {
       });
     }
   }
+
+  async setPassword(request, reply) {
+    try {
+      const { newPassword, confirmPassword } = request.body;
+
+      if (!newPassword || !confirmPassword) {
+        return reply.status(400).send({
+          error: 'Kata sandi baru dan konfirmasi kata sandi wajib diisi'
+        });
+      }
+
+      if (newPassword !== confirmPassword) {
+        return reply.status(400).send({
+          error: 'Kata sandi tidak cocok'
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return reply.status(400).send({
+          error: 'Kata sandi minimal 6 karakter'
+        });
+      }
+
+      const result = await AuthService.setPassword(
+        request.user.userId,
+        newPassword
+      );
+
+      reply.send({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      reply.status(400).send({
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();

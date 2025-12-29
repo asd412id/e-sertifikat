@@ -41,6 +41,11 @@ const User = sequelize.define('User', {
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
+  },
+  hasPassword: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'False for SSO-only users who never set a manual password'
   }
 }, {
   tableName: 'users',

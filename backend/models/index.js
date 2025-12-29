@@ -5,6 +5,7 @@ const Participant = require('./Participant');
 const CertificateTemplate = require('./CertificateTemplate');
 const CertificateVerification = require('./CertificateVerification');
 const Asset = require('./Asset');
+const UserIdentity = require('./UserIdentity');
 
 // Define associations
 User.hasMany(Event, { foreignKey: 'userId', as: 'events' });
@@ -19,6 +20,10 @@ Participant.belongsTo(Event, { foreignKey: 'eventId', as: 'event' });
 Event.hasMany(CertificateTemplate, { foreignKey: 'eventId', as: 'certificateTemplates' });
 CertificateTemplate.belongsTo(Event, { foreignKey: 'eventId', as: 'event' });
 
+// SSO Identity associations
+User.hasMany(UserIdentity, { foreignKey: 'userId', as: 'identities' });
+UserIdentity.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   sequelize,
   User,
@@ -26,5 +31,6 @@ module.exports = {
   Event,
   Participant,
   CertificateTemplate,
-  CertificateVerification
+  CertificateVerification,
+  UserIdentity
 };

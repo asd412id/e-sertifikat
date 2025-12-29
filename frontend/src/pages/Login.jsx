@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Paper,
@@ -23,10 +23,12 @@ import {
   PersonAddOutlined,
   VisibilityOutlined,
   VisibilityOffOutlined,
+  OpenInNew,
 } from '@mui/icons-material';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useNavigate, Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import api from '../services/api';
 
 const AUTH_NOISE_BG = `data:image/svg+xml;utf8,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
@@ -41,15 +43,50 @@ const Login = () => {
     password: '',
   });
   const [loading, setLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState([]);
 
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initializedRef = useRef(false);
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isAuthenticated()) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   useEffect(() => {
     document.title = 'Masuk - e-Sertifikat';
-  }, []);
+
+    // Only run once
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    // Check for SSO error from redirect
+    const ssoError = searchParams.get('error');
+    const ssoMessage = searchParams.get('message');
+    if (ssoError) {
+      setError(ssoMessage || 'Login SSO gagal. Silakan coba lagi.');
+      // Clean up URL params without triggering re-render
+      window.history.replaceState({}, '', '/login');
+    }
+
+    // Fetch available SSO providers
+    const fetchSsoProviders = async () => {
+      try {
+        const response = await api.get('/auth/sso/providers');
+        setSsoProviders(response.data.data.providers || []);
+      } catch (err) {
+        console.log('SSO providers not available:', err.message);
+      }
+    };
+    fetchSsoProviders();
+  }, [searchParams]);
 
   const handleChange = (e) => {
     setFormData({
@@ -60,22 +97,67 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    
+    if (loading) return; // Prevent double submit
+    
     setLoading(true);
     setError('');
 
-    const result = await login(formData.email, formData.password);
+    try {
+      const result = await login(formData.email, formData.password);
 
-    if (result.success) {
-      toast.success('Berhasil masuk!');
-      navigate('/dashboard');
-    } else {
-      setError(result.error);
+      if (result.success) {
+        toast.success('Berhasil masuk!');
+        navigate('/dashboard');
+      } else {
+        setError(result.error || 'Login gagal');
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Terjadi kesalahan saat login');
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  const canSubmit = Boolean(formData.email && formData.password && !loading);
+  const canSubmit = Boolean(formData.email && formData.password && !loading && !ssoLoading);
+
+  const handleSsoLogin = async (provider) => {
+    try {
+      setSsoLoading(true);
+      setError('');
+
+      // Get SSO redirect URL from backend
+      const response = await api.get(`/auth/sso/init?provider=${provider}`);
+      const { authUrl } = response.data.data;
+
+      // Redirect to SSO provider
+      window.location.href = authUrl;
+    } catch (err) {
+      console.error('SSO init error:', err);
+      setError(err.response?.data?.error || 'Gagal memulai login SSO');
+      setSsoLoading(false);
+    }
+  };
+
+  // Helper to get provider display name and icon
+  const getProviderInfo = (provider) => {
+    const providers = {
+      simpatik: {
+        name: 'SIMPATIK',
+        color: '#2d4b81',
+        bgColor: 'rgba(45, 75, 129, 0.08)',
+        hoverBg: 'rgba(45, 75, 129, 0.15)'
+      }
+    };
+    return providers[provider.id] || { 
+      name: provider.name, 
+      color: '#1976d2',
+      bgColor: 'rgba(25, 118, 210, 0.08)',
+      hoverBg: 'rgba(25, 118, 210, 0.15)'
+    };
+  };
 
   return (
     <Box
@@ -318,6 +400,48 @@ const Login = () => {
                     >
                       {loading ? 'Sedang Masuk...' : 'Masuk'}
                     </Button>
+
+                    {/* SSO Login Buttons */}
+                    {ssoProviders.length > 0 && (
+                      <>
+                        <Divider sx={{ my: 2 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            atau masuk dengan
+                          </Typography>
+                        </Divider>
+
+                        <Stack spacing={1.5}>
+                          {ssoProviders.map((provider) => {
+                            const info = getProviderInfo(provider);
+                            return (
+                              <Button
+                                key={provider.id}
+                                fullWidth
+                                variant="outlined"
+                                size="large"
+                                disabled={loading || ssoLoading}
+                                onClick={() => handleSsoLogin(provider.id)}
+                                startIcon={ssoLoading ? <CircularProgress size={20} /> : <OpenInNew />}
+                                sx={{
+                                  py: 1.25,
+                                  borderRadius: 2,
+                                  fontWeight: 600,
+                                  borderColor: info.color,
+                                  color: info.color,
+                                  backgroundColor: info.bgColor,
+                                  '&:hover': {
+                                    borderColor: info.color,
+                                    backgroundColor: info.hoverBg,
+                                  },
+                                }}
+                              >
+                                {ssoLoading ? 'Menghubungkan...' : `Masuk dengan ${info.name}`}
+                              </Button>
+                            );
+                          })}
+                        </Stack>
+                      </>
+                    )}
                   </Stack>
 
                   <Divider sx={{ my: 3 }}>

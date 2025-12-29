@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import SsoCallback from './pages/SsoCallback';
 import DownloadHub from './pages/DownloadHub';
 import DownloadCertificate from './pages/DownloadCertificate';
 import Dashboard from './pages/Dashboard';
@@ -35,6 +36,7 @@ function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/auth/sso/callback" element={<SsoCallback />} />
       <Route path="/download" element={<DownloadHub />} />
       <Route path="/download/:slug" element={<DownloadCertificate />} />
       <Route
