@@ -773,7 +773,9 @@ const Profile = () => {
                             sx={{
                               width: 48,
                               height: 48,
-                              bgcolor: getProviderColor(provider.id),
+                              bgcolor: '#fff',
+                              border: '1px solid',
+                              borderColor: 'divider',
                               fontSize: '0.9rem',
                               fontWeight: 700
                             }}
